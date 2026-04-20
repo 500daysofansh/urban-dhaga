@@ -41,9 +41,7 @@ const Navbar = () => {
   const handleCategoryClick = (categoryName: string) => {
     setDropdownOpen(false);
     setMobileMenuOpen(false);
-    // Dispatch a custom event to filter products
     window.dispatchEvent(new CustomEvent("filter-category", { detail: categoryName }));
-    // Scroll to products section
     const el = document.getElementById("products");
     if (el) {
       el.scrollIntoView({ behavior: "smooth" });
@@ -62,8 +60,13 @@ const Navbar = () => {
         }`}
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="text-xl font-bold tracking-tight text-foreground font-heading">
-            Urban <span className="text-primary">Dhaga</span>
+          {/* Logo */}
+          <Link to="/" className="flex items-center">
+            <img
+              src="/logo.png"
+              alt="Urban Dhaga"
+              className="h-10 w-auto object-contain"
+            />
           </Link>
 
           {/* Desktop nav */}
@@ -71,7 +74,7 @@ const Navbar = () => {
             <Link to="/" className="px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground font-body">
               Home
             </Link>
-            
+
             {/* Categories dropdown */}
             <div className="relative" onMouseEnter={() => setDropdownOpen(true)} onMouseLeave={() => setDropdownOpen(false)}>
               <button className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground font-body">
@@ -181,8 +184,8 @@ const Navbar = () => {
         )}
       </nav>
 
-      {/* Marquee strip */}
-      <div className="bg-primary text-primary-foreground overflow-hidden py-2">
+      {/* Marquee strip — silver */}
+      <div className="bg-[hsl(var(--silver))] text-[hsl(var(--silver-foreground))] overflow-hidden py-2 border-b border-black/10">
         <div className="marquee-strip">
           {Array.from({ length: 4 }).map((_, i) => (
             <span key={i} className="mx-8 text-xs font-medium tracking-widest uppercase font-body whitespace-nowrap">
