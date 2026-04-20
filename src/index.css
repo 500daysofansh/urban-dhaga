@@ -40,6 +40,10 @@
     --ivory: 30 30% 95%;
     --forest: 262 60% 30%;
 
+    /* Silver tokens for the top strip / navbar accents */
+    --silver: 0 0% 85%;
+    --silver-foreground: 240 10% 15%;
+
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
@@ -82,6 +86,10 @@
     --saffron: 340 65% 55%;
     --ivory: 30 15% 20%;
     --forest: 262 60% 40%;
+
+    /* Silver tokens (kept light in dark mode for the metallic feel) */
+    --silver: 0 0% 80%;
+    --silver-foreground: 240 10% 10%;
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
