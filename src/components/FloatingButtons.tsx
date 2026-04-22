@@ -12,7 +12,9 @@ const FloatingButtons = () => {
   }, []);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+    <div className="fixed bottom-20 right-5 z-[9999] flex flex-col gap-3">
+      
+      {/* 🔼 Scroll to Top Button */}
       {showTop && (
         <Button
           size="icon"
@@ -23,8 +25,10 @@ const FloatingButtons = () => {
           <ArrowUp className="h-5 w-5" />
         </Button>
       )}
+
+      {/* 💬 WhatsApp Button */}
       <a
-        href="https://wa.me/918419856013"
+        href="https://wa.me/918419856013?text=Hi%20I%20want%20to%20order"
         target="_blank"
         rel="noopener noreferrer"
         className="flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-110"
