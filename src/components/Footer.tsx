@@ -69,7 +69,7 @@ const Footer = () => {
               <li><Link to="/cart" className="hover:text-saffron transition-colors">Shipping Info</Link></li>
               <li><Link to="/cart" className="hover:text-saffron transition-colors">Returns & Exchanges</Link></li>
               <li><button onClick={() => handleCategoryClick("New Arrivals")} className="hover:text-saffron transition-colors">Size Guide</button></li>
-              <li><a href="https://wa.me/919876543210" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">Contact Us</a></li>
+              <li><a href="https://wa.me/918419856013" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">Contact Us</a></li>
               <li><button onClick={() => toast.info("FAQ section coming soon!")} className="hover:text-saffron transition-colors">FAQs</button></li>
             </ul>
           </div>
@@ -80,7 +80,7 @@ const Footer = () => {
             <ul className="space-y-2.5 text-sm text-background/60 font-body">
               <li><a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">📸 Instagram</a></li>
               <li><a href="https://pinterest.com" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">📌 Pinterest</a></li>
-              <li><a href="https://wa.me/919876543210" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">💬 WhatsApp</a></li>
+              <li><a href="https://wa.me/918419856013" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">💬 WhatsApp</a></li>
             </ul>
           </div>
 
