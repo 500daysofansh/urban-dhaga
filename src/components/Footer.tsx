@@ -78,7 +78,7 @@ const Footer = () => {
           <div>
             <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-background/80 font-body">Follow Us</h4>
             <ul className="space-y-2.5 text-sm text-background/60 font-body">
-              <li><a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">📸 Instagram</a></li>
+              <li><a href="https://www.instagram.com/urban_dhage_/" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">📸 Instagram</a></li>
               <li><a href="https://pinterest.com" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">📌 Pinterest</a></li>
               <li><a href="https://wa.me/918419856013" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">💬 WhatsApp</a></li>
             </ul>
