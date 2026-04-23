@@ -12,6 +12,24 @@ const QUICK_LINKS = [
   { name: "Accessories", category: "Accessories" },
 ];
 
+const InstagramIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+  </svg>
+);
+
 const Footer = () => {
   const [email, setEmail] = useState("");
 
@@ -78,7 +96,17 @@ const Footer = () => {
           <div>
             <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-background/80 font-body">Follow Us</h4>
             <ul className="space-y-2.5 text-sm text-background/60 font-body">
-              <li><a href="https://www.instagram.com/urban_dhage_/" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">📸 Instagram</a></li>
+              <li>
+                
+                  href="https://www.instagram.com/urban_dhage_/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-saffron transition-colors flex items-center gap-2"
+                >
+                  <InstagramIcon />
+                  Instagram
+                </a>
+              </li>
               <li><a href="https://pinterest.com" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">📌 Pinterest</a></li>
               <li><a href="https://wa.me/918419856013" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">💬 WhatsApp</a></li>
             </ul>
