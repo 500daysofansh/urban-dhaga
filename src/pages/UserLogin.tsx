@@ -33,7 +33,7 @@ const UserLogin = () => {
     try {
       if (isSignup) {
         await signup(email, password);
-        toast({ title: "Account created! 🎉", description: "Welcome to Urban Dhaga." });
+        toast({ title: "Account created! 🎉", description: "Welcome to Urban Dhage." });
       } else {
         await login(email, password);
         toast({ title: "Welcome back! 👋" });
@@ -76,7 +76,7 @@ const UserLogin = () => {
         <div className="w-full max-w-sm space-y-6">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-foreground">
-              Urban <span className="text-primary">Dhaga</span>
+              Urban <span className="text-primary">Dhage</span>
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">Reset your password</p>
           </div>
@@ -112,7 +112,7 @@ const UserLogin = () => {
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-foreground">
-            Urban <span className="text-primary">Dhaga</span>
+            Urban <span className="text-primary">Dhage</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {isSignup ? "Create your account" : "Sign in to your account"}

@@ -13,7 +13,7 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const CART_KEY = "urban-dhaga-cart";
+const CART_KEY = "urban-Dhage-cart";
 
 const getCartKey = (id: string, size?: string) => `${id}-${size || "nosize"}`;
 

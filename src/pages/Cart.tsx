@@ -28,7 +28,7 @@ const Cart = () => {
       key: RAZORPAY_KEY,
       amount: totalPrice * 100, // Razorpay expects paise
       currency: "INR",
-      name: "Urban Dhaga",
+      name: "Urban Dhage",
       description: `Order of ${items.length} item(s)`,
       prefill: {
         email: user.email || "",

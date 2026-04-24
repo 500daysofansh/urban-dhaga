@@ -166,7 +166,7 @@ const AdminPanel = () => {
       <header className="border-b bg-card px-4 py-3">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <h1 className="text-xl font-bold text-foreground">
-            Urban <span className="text-primary">Dhaga</span> — Admin
+            Urban <span className="text-primary">Dhage</span> — Admin
           </h1>
           <Button variant="ghost" size="sm" onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" /> Logout

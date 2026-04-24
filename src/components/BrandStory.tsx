@@ -71,7 +71,7 @@ const BrandStory = () => (
             Connecting Indian Artisans to the World
           </h2>
           <p className="mt-6 text-muted-foreground font-body leading-relaxed text-base">
-            Urban Dhaga was born from a simple belief — that India's textile heritage deserves a global stage.
+            Urban Dhage was born from a simple belief — that India's textile heritage deserves a global stage.
             We work directly with artisan families across 15+ states, ensuring fair wages and preserving
             centuries-old techniques like block printing, Chikankari, and Bandhani.
           </p>

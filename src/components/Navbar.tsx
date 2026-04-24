@@ -64,7 +64,7 @@ const Navbar = () => {
           <Link to="/" className="flex items-center">
             <img
               src="/logo.png"
-              alt="Urban Dhaga"
+              alt="Urban Dhage"
               className="h-10 w-auto object-contain"
             />
           </Link>

@@ -12,7 +12,7 @@ const reviews = [
   {
     name: "Ananya Gupta",
     city: "Delhi",
-    text: "I've bought kurtas from many brands, but Urban Dhaga's block-printed collection is on another level. True art you can wear!",
+    text: "I've bought kurtas from many brands, but Urban Dhage's block-printed collection is on another level. True art you can wear!",
     rating: 5,
   },
   {

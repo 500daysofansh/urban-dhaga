@@ -1,6 +1,6 @@
 // TODO: Replace with your Cloudinary credentials
 const CLOUD_NAME = "duboa8gss";
-const UPLOAD_PRESET = "urban_dhaga_upload";
+const UPLOAD_PRESET = "urban_Dhage_upload";
 
 export const uploadToCloudinary = async (file: File): Promise<string> => {
   const formData = new FormData();

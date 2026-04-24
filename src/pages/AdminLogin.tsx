@@ -36,7 +36,7 @@ const AdminLogin = () => {
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-foreground">
-            Urban <span className="text-primary">Dhaga</span>
+            Urban <span className="text-primary">Dhage</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">Admin Panel Login</p>
         </div>
