@@ -37,7 +37,7 @@ const Footer = () => {
         {/* Top: Logo + tagline */}
         <div className="mb-12 text-center">
           <h3 className="text-2xl font-bold font-heading">
-            Urban <span className="text-saffron">Dhaga</span>
+            Urban <span className="text-saffron">Dhage</span>
           </h3>
           <p className="mt-2 text-sm text-background/60 font-body">
             Handcrafted Indian Fashion · Where Tradition Meets Style
@@ -117,7 +117,7 @@ const Footer = () => {
         {/* Bottom bar */}
         <div className="mt-8 border-t border-background/10 pt-8 text-center text-sm text-background/40 font-body">
           <p>Made with ❤️ for Indian Artisans</p>
-          <p className="mt-1">© {new Date().getFullYear()} Urban Dhaga. All rights reserved.</p>
+          <p className="mt-1">© {new Date().getFullYear()} Urban Dhage. All rights reserved.</p>
         </div>
       </div>
     </footer>
