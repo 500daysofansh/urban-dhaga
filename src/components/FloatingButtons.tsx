@@ -25,7 +25,6 @@ const FloatingButtons = () => {
 
   return (
     <div className="fixed bottom-20 right-5 z-[9999] flex flex-col gap-3">
-
       {/* 🔼 Scroll to Top Button */}
       {showTop && (
         <Button
