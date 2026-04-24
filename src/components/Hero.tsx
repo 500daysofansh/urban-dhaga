@@ -43,19 +43,13 @@ const Hero = () => {
             transition={{ delay: 0.6, duration: 0.5 }}
             className="mt-10 flex flex-wrap gap-4"
           >
+            {/* Kept only the Shop Collection button */}
             <Button
               size="lg"
               onClick={scrollToProducts}
               className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90 text-base px-8 py-6 rounded-full font-body"
             >
               Shop the Collection <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 text-base px-8 py-6 rounded-full font-body"
-            >
-              Our Story
             </Button>
           </motion.div>
         </motion.div>
