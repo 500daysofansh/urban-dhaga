@@ -145,7 +145,7 @@ const Footer = () => {
         {/* Bottom bar */}
         <div className="mt-8 border-t border-background/10 pt-8 text-center text-sm text-background/40 font-body">
           <p>Made with ❤️ for Indian Artisans</p>
-          <p className="mt-1">© {new Date().getFullYear()} Urban Dhage. All rights reserved.</p>
+          <p className="mt-1">&copy; {new Date().getFullYear()} Urban Dhage. All rights reserved.</p>
         </div>
       </div>
     </footer>
