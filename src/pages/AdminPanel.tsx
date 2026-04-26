@@ -52,7 +52,7 @@ function extractMeeshoId(url: string): string | null {
 }
 
 async function fetchMeeshoProduct(productId: string) {
-  const apiUrl = `https://prod.meeshoapi.com/api/3.0/product/static?id=${productId}&context=main&ad_active=false`;
+  const apiUrl = `/api/meesho?id=${productId}`;
 
   const headers: Record<string, string> = {
     authorization: "32c4d8137cn9eb493a1921f203173080",
@@ -64,7 +64,7 @@ async function fetchMeeshoProduct(productId: string) {
     "user-agent": "okhttp/4.9.0",
   };
 
-  const response = await fetch(apiUrl, { headers });
+  const response = await fetch(apiUrl);
   if (!response.ok) throw new Error(`Meesho API returned ${response.status}`);
 
   const data = await response.json();
