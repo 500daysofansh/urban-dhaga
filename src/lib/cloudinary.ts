@@ -1,9 +1,16 @@
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
 export const uploadToCloudinary = async (file: File): Promise<string> => {
-  const fileName = `products/${Date.now()}_${file.name}`;
-  const storageRef = ref(storage, fileName);
-  const snapshot = await uploadBytes(storageRef, file);
-  return await getDownloadURL(snapshot.ref);
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const response = await fetch(
+    `https://api.imgbb.com/1/upload?key=1511274afb58e70bc2c0fff7568fcce4`,
+    { method: "POST", body: formData }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to upload image");
+  }
+
+  const data = await response.json();
+  return data.data.url;
 };
