@@ -1,15 +1,116 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Product, JEWELRY_CATEGORIES, AVAILABLE_SIZES } from "@/types/product";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Plus, Pencil, Trash2, Upload, X } from "lucide-react";
+import {
+  LogOut,
+  Plus,
+  Pencil,
+  Trash2,
+  Upload,
+  X,
+  ShoppingBag,
+  PackageOpen,
+  Loader2,
+  Link2,
+  ImagePlus,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+// ─── Meesho helpers ──────────────────────────────────────────────────────────
+
+function extractMeeshoId(url: string): string | null {
+  const clean = url.trim().replace(/['", ]/g, "");
+  const match = clean.match(/\/(?:p|product)\/([a-zA-Z0-9]+)/);
+  if (!match) return null;
+  try {
+    return String(parseInt(match[1], 36));
+  } catch {
+    return null;
+  }
+}
+
+async function fetchMeeshoProduct(productId: string) {
+  const apiUrl = `https://prod.meeshoapi.com/api/3.0/product/static?id=${productId}&context=main&ad_active=false`;
+
+  const headers: Record<string, string> = {
+    authorization: "32c4d8137cn9eb493a1921f203173080",
+    "app-version": "27.6",
+    "application-id": "com.meesho.supply",
+    "country-iso": "in",
+    "app-client-id": "android",
+    xo: "eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmVtbHZiaTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakU1TXpRME5qRTROelVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5aWJtOXVlVzF2ZFhOZmRYTmxjbDlwWkNJNkltSXhOek0wTVRCaUxUWmhZalF0TkRZd01DMWlNV1kzTFdNMU56bGtPVEk0WXpVM01pSXNJbWgwZEhCek9pOHZiV1ZsYzJodkxtTnZiUzlwYm5OMFlXNWpaVjlwWkNJNkltTmtOR0ZtWXpsbU5XWTVPVFJpWVdKaE5UVTJabVkyTjJZMlpUVTBNelE0SWl3aWFXRjBJam94TnpjMk56Z3hPRGMxZlEud2lQRWhRMWZUWGd0ZFprQUtVSGswZTBrWE5BaWxhaENGRG1hcERPcmlEcyIsInhvIjoiIn0=",
+    "user-agent": "okhttp/4.9.0",
+  };
+
+  const response = await fetch(apiUrl, { headers });
+  if (!response.ok) throw new Error(`Meesho API returned ${response.status}`);
+
+  const data = await response.json();
+  const catalog = data?.catalog;
+  const product = catalog?.products?.[0];
+  if (!product) throw new Error("No product data found in response.");
+
+  const images: string[] = [];
+  (catalog?.images || []).forEach((img: any) => {
+    const u = img?.url || img?.image_url;
+    if (u && !images.includes(u)) images.push(u);
+  });
+  if (images.length === 0) {
+    (product?.images || []).forEach((img: any) => {
+      const u = typeof img === "string" ? img : img?.url || img?.image_url;
+      if (u && !images.includes(u)) images.push(u);
+    });
+  }
+
+  const sizes: string[] = [];
+  (product?.inventory || []).forEach((item: any) => {
+    const v = item?.variation?.name;
+    if (v && !sizes.includes(v)) sizes.push(v);
+  });
+
+  const description =
+    (catalog?.description?.sections || [])
+      .map((s: any) => s?.description || "")
+      .filter(Boolean)
+      .join(" ")
+      .trim() || product?.name || "";
+
+  return {
+    name: product.name || "Unnamed Product",
+    price: product.min_price || 0,
+    description,
+    image: images[0] || "",
+    images,
+    sizes,
+    inStock: product.in_stock ?? true,
+    quantity: (product?.inventory || []).filter((i: any) => i.in_stock).length || 1,
+    category: catalog?.primary_tag?.name || "Uncategorized",
+  };
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const emptyProduct = {
   name: "",
@@ -23,23 +124,34 @@ const emptyProduct = {
   sizes: [] as string[],
 };
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 const AdminPanel = () => {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
   const [products, setProducts] = useState<(Product & { firestoreId?: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyProduct);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"products" | "orders">("products");
 
-  const isJewelryCategory = JEWELRY_CATEGORIES.some(
+  const [meeshoUrl, setMeeshoUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<"idle" | "success" | "error">("idle");
+
+  const isJewelry = JEWELRY_CATEGORIES.some(
     (c) => c.toLowerCase() === form.category.toLowerCase()
   );
 
+  // ── Firestore ──────────────────────────────────────────────────────────────
+
   const fetchProducts = async () => {
+    setLoading(true);
     try {
       const snapshot = await getDocs(collection(db, "products"));
       const items = snapshot.docs.map((d) => ({
@@ -55,9 +167,9 @@ const AdminPanel = () => {
     }
   };
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
+  useEffect(() => { fetchProducts(); }, []);
+
+  // ── Image upload ───────────────────────────────────────────────────────────
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -82,27 +194,67 @@ const AdminPanel = () => {
 
   const removeImage = (index: number) => {
     setForm((prev) => {
-      const newImages = prev.images.filter((_, i) => i !== index);
-      return {
-        ...prev,
-        images: newImages,
-        image: newImages[0] || "",
-      };
+      const next = prev.images.filter((_, i) => i !== index);
+      return { ...prev, images: next, image: next[0] || "" };
     });
   };
 
-  const handleSave = async () => {
-    if (!form.name || !form.price || !form.category) {
-      toast({ title: "Please fill required fields", variant: "destructive" });
+  const setCover = (index: number) => {
+    setForm((prev) => {
+      const next = [...prev.images];
+      const [picked] = next.splice(index, 1);
+      next.unshift(picked);
+      return { ...prev, images: next, image: next[0] };
+    });
+  };
+
+  // ── Meesho import ──────────────────────────────────────────────────────────
+
+  const handleMeeshoImport = async () => {
+    const id = extractMeeshoId(meeshoUrl);
+    if (!id) {
+      toast({ title: "Invalid Meesho link", description: "Please paste a valid Meesho product URL.", variant: "destructive" });
       return;
     }
+    setImporting(true);
+    setImportStatus("idle");
+    try {
+      const product = await fetchMeeshoProduct(id);
+      setForm({
+        name: product.name,
+        price: product.price,
+        description: product.description,
+        image: product.image,
+        images: product.images,
+        category: product.category,
+        inStock: product.inStock,
+        quantity: product.quantity,
+        sizes: product.sizes,
+      });
+      setImportStatus("success");
+      setMeeshoUrl("");
+      toast({ title: "✅ Imported from Meesho!", description: `${product.images.length} image(s) loaded.` });
+    } catch (err: any) {
+      setImportStatus("error");
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  };
 
+  // ── Save / Edit / Delete ───────────────────────────────────────────────────
+
+  const handleSave = async () => {
+    if (!form.name || !form.price || !form.category) {
+      toast({ title: "Fill required fields", description: "Name, price and category are required.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
     const productData = {
       ...form,
       inStock: form.quantity > 0,
-      sizes: isJewelryCategory ? [] : form.sizes,
+      sizes: isJewelry ? [] : form.sizes,
     };
-
     try {
       if (editingId) {
         await updateDoc(doc(db, "products", editingId), { ...productData });
@@ -114,20 +266,12 @@ const AdminPanel = () => {
       setShowForm(false);
       setEditingId(null);
       setForm(emptyProduct);
+      setImportStatus("idle");
       fetchProducts();
     } catch {
       toast({ title: "Save failed", variant: "destructive" });
-    }
-  };
-
-  const handleDelete = async (firestoreId: string) => {
-    if (!confirm("Delete this product?")) return;
-    try {
-      await deleteDoc(doc(db, "products", firestoreId));
-      toast({ title: "Product deleted" });
-      fetchProducts();
-    } catch {
-      toast({ title: "Delete failed", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -144,7 +288,20 @@ const AdminPanel = () => {
       sizes: product.sizes || [],
     });
     setEditingId(product.firestoreId || null);
+    setImportStatus("idle");
     setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDelete = async (firestoreId: string) => {
+    if (!confirm("Delete this product?")) return;
+    try {
+      await deleteDoc(doc(db, "products", firestoreId));
+      toast({ title: "Product deleted" });
+      fetchProducts();
+    } catch {
+      toast({ title: "Delete failed", variant: "destructive" });
+    }
   };
 
   const toggleSize = (size: string) => {
@@ -161,118 +318,207 @@ const AdminPanel = () => {
     navigate("/admin/login");
   };
 
+  const openNewForm = () => {
+    setForm(emptyProduct);
+    setEditingId(null);
+    setImportStatus("idle");
+    setMeeshoUrl("");
+    setShowForm(true);
+    setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 50);
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card px-4 py-3">
+
+      {/* Header */}
+      <header className="sticky top-0 z-10 border-b bg-card/80 backdrop-blur-sm px-4 py-3 shadow-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <h1 className="text-xl font-bold text-foreground">
-            Urban <span className="text-primary">Dhage</span> — Admin
-          </h1>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="h-5 w-5 text-primary" />
+            <span className="font-heading text-lg font-bold text-foreground">
+              Urban <span className="text-primary">Dhage</span>
+              <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 font-body text-xs font-semibold text-primary">
+                Admin
+              </span>
+            </span>
+          </div>
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground">
             <LogOut className="mr-2 h-4 w-4" /> Logout
           </Button>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-6">
+
+        {/* Tabs */}
         <div className="mb-6 flex gap-2">
-          <Button
-            variant={activeTab === "products" ? "default" : "outline"}
-            onClick={() => setActiveTab("products")}
-          >
-            Products
-          </Button>
-          <Button
-            variant={activeTab === "orders" ? "default" : "outline"}
-            onClick={() => setActiveTab("orders")}
-          >
-            Orders
-          </Button>
+          {(["products", "orders"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`rounded-full px-5 py-2 font-body text-sm font-semibold capitalize transition-colors ${
+                activeTab === tab
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
 
+        {/* ── Products Tab ── */}
         {activeTab === "products" && (
           <>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">
-                Products ({products.length})
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="font-heading text-xl font-semibold text-foreground">
+                Products
+                <span className="ml-2 font-body text-sm font-normal text-muted-foreground">
+                  ({products.length})
+                </span>
               </h2>
-              <Button
-                onClick={() => {
-                  setForm(emptyProduct);
-                  setEditingId(null);
-                  setShowForm(true);
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" /> Add Product
-              </Button>
+              {!showForm && (
+                <Button onClick={openNewForm}>
+                  <Plus className="mr-2 h-4 w-4" /> Add Product
+                </Button>
+              )}
             </div>
 
+            {/* ── Form ── */}
             {showForm && (
-              <div className="mb-6 rounded-lg border bg-card p-6">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="font-semibold text-foreground">
+              <div className="mb-8 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+
+                <div className="flex items-center justify-between border-b border-border bg-muted/30 px-6 py-4">
+                  <h3 className="font-heading text-base font-semibold text-foreground">
                     {editingId ? "Edit Product" : "New Product"}
                   </h3>
-                  <Button variant="ghost" size="icon" onClick={() => setShowForm(false)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Input
-                    placeholder="Product Name *"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Price *"
-                    type="number"
-                    value={form.price || ""}
-                    onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
-                  />
-                  <Select
-                    value={form.category}
-                    onValueChange={(value) => setForm({ ...form, category: value })}
+                  <button
+                    onClick={() => { setShowForm(false); setImportStatus("idle"); }}
+                    className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Category *" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {["Sarees", "Kurtas", "Dupattas", "Accessories", "Lehengas", "Jewellery"].map((cat) => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    placeholder="Stock Quantity *"
-                    type="number"
-                    min={0}
-                    value={form.quantity || ""}
-                    onChange={(e) => {
-                      const qty = Number(e.target.value);
-                      setForm({ ...form, quantity: qty, inStock: qty > 0 });
-                    }}
-                  />
-                  <div className="sm:col-span-2">
-                    <Input
-                      placeholder="Description"
-                      value={form.description}
-                      onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    />
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-6 p-6">
+
+                  {/* Meesho Import */}
+                  <div className={`rounded-xl border-2 border-dashed p-4 transition-colors ${
+                    importStatus === "success"
+                      ? "border-green-400 bg-green-50/50"
+                      : importStatus === "error"
+                      ? "border-red-300 bg-red-50/50"
+                      : "border-saffron/30 bg-saffron/5"
+                  }`}>
+                    <div className="mb-3 flex items-center gap-2">
+                      <Link2 className="h-4 w-4 text-saffron" />
+                      <p className="font-body text-sm font-semibold text-foreground">
+                        Import from Meesho
+                      </p>
+                      {importStatus === "success" && (
+                        <span className="flex items-center gap-1 font-body text-xs font-medium text-green-600">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Imported!
+                        </span>
+                      )}
+                      {importStatus === "error" && (
+                        <span className="flex items-center gap-1 font-body text-xs font-medium text-red-500">
+                          <AlertCircle className="h-3.5 w-3.5" /> Failed
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste Meesho product link e.g. meesho.com/saree/p/abc123"
+                        value={meeshoUrl}
+                        onChange={(e) => { setMeeshoUrl(e.target.value); setImportStatus("idle"); }}
+                        className="font-body text-sm"
+                        onKeyDown={(e) => e.key === "Enter" && handleMeeshoImport()}
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleMeeshoImport}
+                        disabled={importing || !meeshoUrl.trim()}
+                        variant="outline"
+                        className="shrink-0"
+                      >
+                        {importing ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing</>
+                        ) : "Import"}
+                      </Button>
+                    </div>
+                    <p className="mt-1.5 font-body text-xs text-muted-foreground">
+                      Name, price, description, sizes & images auto-fill. You can edit anything after.
+                    </p>
                   </div>
 
-                  {/* Size selector — hidden for jewelry */}
-                  {!isJewelryCategory && (
-                    <div className="sm:col-span-2">
-                      <label className="mb-2 block text-sm font-medium text-foreground">
-                        Available Sizes
-                      </label>
+                  {/* Fields */}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Name *</label>
+                      <Input
+                        placeholder="e.g. Kanjivaram Silk Saree"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price (₹) *</label>
+                      <Input
+                        placeholder="e.g. 1299"
+                        type="number"
+                        value={form.price || ""}
+                        onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Category *</label>
+                      <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                        <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                        <SelectContent>
+                          {["Sarees", "Kurtas", "Dupattas", "Accessories", "Lehengas", "Jewellery"].map((cat) => (
+                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stock Quantity *</label>
+                      <Input
+                        placeholder="e.g. 10"
+                        type="number"
+                        min={0}
+                        value={form.quantity || ""}
+                        onChange={(e) => {
+                          const qty = Number(e.target.value);
+                          setForm({ ...form, quantity: qty, inStock: qty > 0 });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</label>
+                      <textarea
+                        rows={3}
+                        placeholder="Product description..."
+                        value={form.description}
+                        onChange={(e) => setForm({ ...form, description: e.target.value })}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 font-body text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Sizes */}
+                  {!isJewelry && (
+                    <div className="space-y-2">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Available Sizes</label>
                       <div className="flex flex-wrap gap-2">
                         {AVAILABLE_SIZES.map((size) => (
                           <button
                             key={size}
                             type="button"
                             onClick={() => toggleSize(size)}
-                            className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                            className={`rounded-lg border px-4 py-1.5 font-body text-sm font-medium transition-colors ${
                               form.sizes.includes(size)
                                 ? "border-primary bg-primary text-primary-foreground"
                                 : "border-input bg-background text-foreground hover:bg-accent"
@@ -285,99 +531,111 @@ const AdminPanel = () => {
                     </div>
                   )}
 
-                  <div className="sm:col-span-2">
-                    <label className="mb-2 block text-sm font-medium text-foreground">
-                      Product Images
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <label className="cursor-pointer rounded-md border border-dashed border-input px-4 py-2 text-sm text-muted-foreground hover:bg-accent">
-                        <Upload className="mr-2 inline h-4 w-4" />
-                        {uploading ? "Uploading..." : "Upload Images"}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          className="hidden"
-                          onChange={handleImageUpload}
-                          disabled={uploading}
-                        />
-                      </label>
+                  {/* Images */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Images</label>
+                      {form.images.length > 0 && (
+                        <span className="font-body text-xs text-muted-foreground">Click image to set as cover</span>
+                      )}
                     </div>
+                    <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-input px-4 py-2.5 font-body text-sm text-muted-foreground transition-colors hover:bg-accent">
+                      {uploading
+                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</>
+                        : <><ImagePlus className="h-4 w-4" /> Upload Images</>
+                      }
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploading} />
+                    </label>
                     {form.images.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-3">
                         {form.images.map((url, idx) => (
-                          <div key={idx} className="relative">
+                          <div key={idx} className="group relative">
                             <img
                               src={url}
-                              alt={`Preview ${idx + 1}`}
-                              className={`h-20 w-20 rounded-md object-cover border-2 ${idx === 0 ? "border-primary" : "border-transparent"}`}
+                              alt={`Image ${idx + 1}`}
+                              onClick={() => setCover(idx)}
+                              className={`h-24 w-24 cursor-pointer rounded-xl object-cover transition-all ${
+                                idx === 0
+                                  ? "ring-2 ring-primary ring-offset-2"
+                                  : "opacity-80 hover:opacity-100 hover:ring-2 hover:ring-border"
+                              }`}
                             />
+                            {idx === 0 && (
+                              <span className="absolute bottom-1 left-0 right-0 text-center font-body text-[10px] font-semibold text-primary">Cover</span>
+                            )}
                             <button
                               type="button"
                               onClick={() => removeImage(idx)}
-                              className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive p-0.5 text-destructive-foreground"
+                              className="absolute -right-1.5 -top-1.5 hidden rounded-full bg-destructive p-0.5 text-destructive-foreground group-hover:flex"
                             >
                               <X className="h-3 w-3" />
                             </button>
-                            {idx === 0 && (
-                              <span className="absolute bottom-0 left-0 right-0 bg-primary/80 text-center text-[10px] text-primary-foreground">
-                                Cover
-                              </span>
-                            )}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <Button onClick={handleSave}>
-                    {editingId ? "Update" : "Add"} Product
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowForm(false)}>
-                    Cancel
-                  </Button>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 border-t border-border pt-4">
+                    <Button onClick={handleSave} disabled={saving} className="min-w-[130px]">
+                      {saving
+                        ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
+                        : editingId ? "Update Product" : "Add Product"
+                      }
+                    </Button>
+                    <Button variant="outline" onClick={() => { setShowForm(false); setImportStatus("idle"); }}>
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
 
+            {/* Product list */}
             {loading ? (
-              <p className="text-muted-foreground">Loading products...</p>
+              <div className="flex items-center justify-center py-20 text-muted-foreground">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading products...
+              </div>
             ) : products.length === 0 ? (
-              <p className="text-muted-foreground">No products yet. Add your first product!</p>
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+                <PackageOpen className="mb-3 h-10 w-10 text-muted-foreground/40" />
+                <p className="font-heading text-base font-semibold text-foreground">No products yet</p>
+                <p className="mt-1 font-body text-sm text-muted-foreground">Add your first product to get started</p>
+                <Button className="mt-4" onClick={openNewForm}><Plus className="mr-2 h-4 w-4" /> Add Product</Button>
+              </div>
             ) : (
-              <div className="grid gap-4">
+              <div className="grid gap-3">
                 {products.map((product) => (
-                  <div
-                    key={product.id}
-                    className="flex items-center gap-4 rounded-lg border bg-card p-4"
-                  >
+                  <div key={product.id} className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-sm">
                     <img
                       src={product.image}
                       alt={product.name}
-                      className="h-16 w-16 rounded-md object-cover"
+                      className="h-16 w-16 rounded-lg object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).src = "https://placehold.co/64x64?text=No+Image"; }}
                     />
-                    <div className="flex-1">
-                      <h4 className="font-medium text-foreground">{product.name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        ₹{product.price} · {product.category} · Stock: {product.quantity || 0}
+                    <div className="min-w-0 flex-1">
+                      <h4 className="truncate font-body font-semibold text-foreground">{product.name}</h4>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="font-body text-sm text-muted-foreground">₹{product.price}</span>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="font-body text-sm text-muted-foreground">{product.category}</span>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="font-body text-sm text-muted-foreground">Stock: {product.quantity || 0}</span>
                         {product.sizes && product.sizes.length > 0 && (
-                          <span className="ml-2">· Sizes: {product.sizes.join(", ")}</span>
+                          <><span className="text-muted-foreground">·</span>
+                          <span className="font-body text-sm text-muted-foreground">{product.sizes.join(", ")}</span></>
                         )}
                         {(product.quantity || 0) <= 0 && (
-                          <span className="ml-2 text-destructive">Out of stock</span>
+                          <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-body text-xs font-medium text-destructive">Out of stock</span>
                         )}
-                      </p>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex shrink-0 gap-1">
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => product.firestoreId && handleDelete(product.firestoreId)}
-                      >
+                      <Button variant="ghost" size="icon" onClick={() => product.firestoreId && handleDelete(product.firestoreId)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -388,13 +646,15 @@ const AdminPanel = () => {
           </>
         )}
 
+        {/* Orders Tab */}
         {activeTab === "orders" && (
-          <div className="rounded-lg border bg-card p-8 text-center">
-            <p className="text-muted-foreground">
-              Order management coming soon. Orders from Firestore will appear here.
-            </p>
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-24 text-center">
+            <PackageOpen className="mb-3 h-10 w-10 text-muted-foreground/40" />
+            <p className="font-heading text-base font-semibold text-foreground">Order management coming soon</p>
+            <p className="mt-1 font-body text-sm text-muted-foreground">Orders from Firestore will appear here.</p>
           </div>
         )}
+
       </div>
     </div>
   );
