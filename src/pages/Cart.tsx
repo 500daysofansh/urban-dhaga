@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -8,13 +9,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-
-const RAZORPAY_KEY = "rzp_live_SYldm8DNDEii9F";
+import CheckoutModal from "@/components/CheckoutModal";
 
 const Cart = () => {
   const { items, updateQuantity, removeFromCart, clearCart, totalPrice } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const handleCheckout = () => {
     if (!user) {
@@ -22,44 +23,7 @@ const Cart = () => {
       navigate("/login");
       return;
     }
-
-
-    const options: RazorpayOptions = {
-      key: RAZORPAY_KEY,
-      amount: totalPrice * 100, // Razorpay expects paise
-      currency: "INR",
-      name: "Urban Dhage",
-      description: `Order of ${items.length} item(s)`,
-      prefill: {
-        email: user.email || "",
-      },
-      theme: {
-        color: "#7c3aed",
-      },
-      handler: (response) => {
-        clearCart();
-        navigate("/order-confirmation", {
-          state: {
-            paymentId: response.razorpay_payment_id,
-            amount: totalPrice,
-            items: items.map((i) => ({
-              name: i.name,
-              cartQuantity: i.cartQuantity,
-              price: i.price,
-              selectedSize: i.selectedSize,
-            })),
-          },
-        });
-      },
-      modal: {
-        ondismiss: () => {
-          toast.info("Payment cancelled");
-        },
-      },
-    };
-
-    const rzp = new window.Razorpay(options);
-    rzp.open();
+    setCheckoutOpen(true);
   };
 
   if (items.length === 0) {
@@ -183,6 +147,12 @@ const Cart = () => {
         </div>
       </main>
       <Footer />
+
+      <CheckoutModal
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        userEmail={user?.email || ""}
+      />
     </div>
   );
 };
