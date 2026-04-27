@@ -1,13 +1,12 @@
 export const JEWELRY_CATEGORIES = ["Jewellery", "Jewelry", "Accessories"];
-
 export const AVAILABLE_SIZES = ["XS", "S", "M", "L", "XL", "XXL"];
 
 export interface Product {
   id: string;
   name: string;
-  price: number;       // selling price — shown to customers
-  costPrice?: number;  // buying/Meesho price — admin only
-  meeshoUrl?: string;  // Meesho source URL — admin only
+  price: number;
+  costPrice?: number;
+  meeshoUrl?: string;
   description: string;
   image: string;
   images: string[];
