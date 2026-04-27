@@ -116,7 +116,13 @@ const FAQs = () => {
         </Link>
 
         <h1 className="font-heading text-3xl font-bold text-foreground mb-2">Frequently Asked Questions</h1>
-        <p className="font-body text-muted-foreground mb-10">Can't find your answer? <a href="https://wa.me/918419856013" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">WhatsApp us</a> — we respond fast.</p>
+        <p className="font-body text-muted-foreground mb-10">
+          Can't find your answer?{" "}
+          <a href="https://wa.me/918419856013" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+            WhatsApp us
+          </a>{" "}
+          — we respond fast.
+        </p>
 
         <div className="space-y-6">
           {faqs.map((section) => (
@@ -137,14 +143,18 @@ const FAQs = () => {
           <p className="font-heading text-base font-semibold text-foreground mb-1">Still have questions?</p>
           <p className="font-body text-sm text-muted-foreground mb-4">Our team is happy to help you out.</p>
           <div className="flex flex-wrap justify-center gap-3">
-            <a href="https://wa.me/918419856013"
+            
+              href="https://wa.me/918419856013"
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-full bg-green-500 px-5 py-2 font-body text-sm font-semibold text-white hover:bg-green-600 transition-colors">
+              className="rounded-full bg-green-500 px-5 py-2 font-body text-sm font-semibold text-white hover:bg-green-600 transition-colors"
+            >
               WhatsApp Us
             </a>
-            <a href="mailto:support@urbandhage.in"
-              className="rounded-full border border-primary px-5 py-2 font-body text-sm font-semibold text-primary hover:bg-primary/10 transition-colors">
+            
+              href="mailto:support@urbandhage.in"
+              className="rounded-full border border-primary px-5 py-2 font-body text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+            >
               Email Us
             </a>
           </div>
