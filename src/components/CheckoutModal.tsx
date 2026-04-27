@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { X, MapPin, Loader2 } from "lucide-react";
 import { ShippingAddress } from "@/types/order";
+import { sendOrderEmails } from "@/lib/email";
 
 interface CheckoutModalProps {
   open: boolean;
@@ -53,6 +54,11 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
     const err = validate();
     if (err) { toast({ title: err, variant: "destructive" }); return; }
 
+    const addressLine = `${address.fullName}\n${address.phone}\n${address.street}, ${address.city}, ${address.state} - ${address.pincode}`;
+    const itemsSummary = items
+      .map((i) => `${i.name}${i.selectedSize ? ` (${i.selectedSize})` : ""} × ${i.cartQuantity} = ₹${(i.price * i.cartQuantity).toLocaleString("en-IN")}`)
+      .join("\n");
+
     const options: any = {
       key: "rzp_live_SYldm8DNDEii9F",
       amount: totalPrice * 100,
@@ -65,11 +71,24 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         contact: address.phone,
       },
       notes: {
-        delivery_address: `${address.street}, ${address.city}, ${address.state} - ${address.pincode}`,
+        delivery_address: addressLine,
       },
       theme: { color: "#7c3aed" },
-      handler: (response: any) => {
+      handler: async (response: any) => {
         setPaying(true);
+        try {
+          await sendOrderEmails({
+            customerName:  address.fullName,
+            customerEmail: userEmail,
+            paymentId:     response.razorpay_payment_id,
+            amount:        totalPrice,
+            addressLine,
+            itemsSummary,
+          });
+        } catch (err) {
+          console.error("Email send failed:", err);
+          // Don't block order confirmation if email fails
+        }
         clearCart();
         onClose();
         navigate("/order-confirmation", {
@@ -103,7 +122,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
     >
       <div className="w-full max-w-lg bg-card rounded-2xl shadow-xl overflow-hidden">
 
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4 text-primary" />
@@ -114,42 +132,40 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
           </button>
         </div>
 
-        {/* Form */}
         <div className="px-6 py-5 space-y-3 max-h-[65vh] overflow-y-auto">
-
           <div className="grid grid-cols-2 gap-3">
 
             <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">Full Name *</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Full Name *</label>
               <Input placeholder="Priya Sharma" value={address.fullName} onChange={field("fullName")} />
             </div>
 
             <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">Mobile Number *</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mobile Number *</label>
               <Input placeholder="9876543210" maxLength={10} value={address.phone} onChange={field("phone")} />
             </div>
 
             <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">Street Address *</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Street Address *</label>
               <Input placeholder="House no., Street, Area, Landmark" value={address.street} onChange={field("street")} />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">City *</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">City *</label>
               <Input placeholder="Lucknow" value={address.city} onChange={field("city")} />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">Pincode *</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pincode *</label>
               <Input placeholder="226001" maxLength={6} value={address.pincode} onChange={field("pincode")} />
             </div>
 
             <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">State *</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">State *</label>
               <select
                 value={address.state}
                 onChange={field("state")}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-body text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="">Select state</option>
                 {INDIAN_STATES.map((s) => (
@@ -160,11 +176,10 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
 
           </div>
 
-          {/* Order summary */}
           <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2 mt-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">Order Summary</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order Summary</p>
             {items.map((item) => (
-              <div key={`${item.id}-${item.selectedSize}`} className="flex justify-between text-sm font-body">
+              <div key={`${item.id}-${item.selectedSize}`} className="flex justify-between text-sm">
                 <span className="text-foreground truncate mr-2">
                   {item.name}{item.selectedSize ? ` (${item.selectedSize})` : ""} × {item.cartQuantity}
                 </span>
@@ -173,19 +188,17 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
                 </span>
               </div>
             ))}
-            <div className="border-t border-border pt-2 flex justify-between font-semibold font-heading text-sm">
+            <div className="border-t border-border pt-2 flex justify-between font-semibold text-sm">
               <span>Total</span>
               <span>₹{totalPrice.toLocaleString("en-IN")}</span>
             </div>
-            <p className="text-xs text-primary font-body">✦ Free shipping on this order</p>
+            <p className="text-xs text-primary">✦ Free shipping on this order</p>
           </div>
-
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-border">
           <Button
-            className="w-full rounded-full font-body text-base py-5 gap-2"
+            className="w-full rounded-full text-base py-5 gap-2"
             onClick={handlePay}
             disabled={paying}
           >
