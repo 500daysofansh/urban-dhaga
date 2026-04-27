@@ -667,17 +667,17 @@ const AdminPanel = () => {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="truncate font-body font-semibold text-foreground">{product.name}</h4>
-                        {product.meeshoUrl && (
-                          
-                            href={product.meeshoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-body text-[10px] font-semibold text-primary hover:bg-primary/20"
-                          >
-                            Meesho ↗
-                          </a>
-                        )}
+                       {product.meeshoUrl && (
+  
+    href={product.meeshoUrl}
+    target="_blank"
+    rel="noopener noreferrer"
+    onClick={(e) => e.stopPropagation()}
+    className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-body text-[10px] font-semibold text-primary hover:bg-primary/20"
+  >
+    Meesho ↗
+  </a>
+)}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span className="font-body text-sm font-semibold text-foreground">₹{product.price}</span>
