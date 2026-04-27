@@ -1,5 +1,5 @@
 const SERVICE_ID = "service_6ayn8y6";
-const PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY as string;
+const PUBLIC_KEY = "a5MUx20kzvERzjdBr";
 const CUST_TPL   = "template_fqu1999";
 const ADMIN_TPL  = "template_bv8hdi4";
 
