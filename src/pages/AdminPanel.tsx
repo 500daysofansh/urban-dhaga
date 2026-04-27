@@ -22,19 +22,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
-  LogOut,
-  Plus,
-  Pencil,
-  Trash2,
-  Upload,
-  X,
-  ShoppingBag,
-  PackageOpen,
-  Loader2,
-  Link2,
-  ImagePlus,
-  CheckCircle2,
-  AlertCircle,
+  LogOut, Plus, Pencil, Trash2, Upload, X,
+  ShoppingBag, PackageOpen, Loader2, Link2,
+  ImagePlus, CheckCircle2, AlertCircle, TrendingUp,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -52,19 +42,16 @@ function extractMeeshoId(url: string): string | null {
 }
 
 async function fetchMeeshoProduct(productId: string) {
-  const apiUrl = `/api/meesho?id=${productId}`;
-
-  const headers: Record<string, string> = {
-    authorization: "32c4d8137cn9eb493a1921f203173080",
-    "app-version": "27.6",
-    "application-id": "com.meesho.supply",
-    "country-iso": "in",
-    "app-client-id": "android",
-    xo: "eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmVtbHZiaTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakU1TXpRME5qRTROelVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5aWJtOXVlVzF2ZFhOZmRYTmxjbDlwWkNJNkltSXhOek0wTVRCaUxUWmhZalF0TkRZd01DMWlNV1kzTFdNMU56bGtPVEk0WXpVM01pSXNJbWgwZEhCek9pOHZiV1ZsYzJodkxtTnZiUzlwYm5OMFlXNWpaVjlwWkNJNkltTmtOR0ZtWXpsbU5XWTVPVFJpWVdKaE5UVTJabVkyTjJZMlpUVTBNelE0SWl3aWFXRjBJam94TnpjMk56Z3hPRGMxZlEud2lQRWhRMWZUWGd0ZFprQUtVSGswZTBrWE5BaWxhaENGRG1hcERPcmlEcyIsInhvIjoiIn0=",
-    "user-agent": "okhttp/4.9.0",
-  };
-
-  const response = await fetch(apiUrl);
+  const response = await fetch(`/api/meesho?id=${productId}`, {
+    headers: {
+      authorization: "32c4d8137cn9eb493a1921f203173080",
+      "app-version": "27.6",
+      "application-id": "com.meesho.supply",
+      "country-iso": "in",
+      "app-client-id": "android",
+      "user-agent": "okhttp/4.9.0",
+    },
+  });
   if (!response.ok) throw new Error(`Meesho API returned ${response.status}`);
 
   const data = await response.json();
@@ -99,7 +86,7 @@ async function fetchMeeshoProduct(productId: string) {
 
   return {
     name: product.name || "Unnamed Product",
-    price: product.min_price || 0,
+    costPrice: product.min_price || 0,
     description,
     image: images[0] || "",
     images,
@@ -115,6 +102,8 @@ async function fetchMeeshoProduct(productId: string) {
 const emptyProduct = {
   name: "",
   price: 0,
+  costPrice: 0,
+  meeshoUrl: "",
   description: "",
   image: "",
   images: [] as string[],
@@ -147,6 +136,11 @@ const AdminPanel = () => {
   const isJewelry = JEWELRY_CATEGORIES.some(
     (c) => c.toLowerCase() === form.category.toLowerCase()
   );
+
+  const margin = form.price && form.costPrice ? form.price - form.costPrice : 0;
+  const marginPct = form.costPrice && form.price
+    ? Math.round(((form.price - form.costPrice) / form.costPrice) * 100)
+    : 0;
 
   // ── Firestore ──────────────────────────────────────────────────────────────
 
@@ -222,7 +216,9 @@ const AdminPanel = () => {
       const product = await fetchMeeshoProduct(id);
       setForm({
         name: product.name,
-        price: product.price,
+        price: 0,                     // admin fills selling price manually
+        costPrice: product.costPrice, // Meesho price = your cost
+        meeshoUrl: meeshoUrl.trim(),  // store the source URL
         description: product.description,
         image: product.image,
         images: product.images,
@@ -233,7 +229,7 @@ const AdminPanel = () => {
       });
       setImportStatus("success");
       setMeeshoUrl("");
-      toast({ title: "✅ Imported from Meesho!", description: `${product.images.length} image(s) loaded.` });
+      toast({ title: "✅ Imported from Meesho!", description: `Cost price: ₹${product.costPrice}. Now set your selling price.` });
     } catch (err: any) {
       setImportStatus("error");
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
@@ -246,13 +242,21 @@ const AdminPanel = () => {
 
   const handleSave = async () => {
     if (!form.name || !form.price || !form.category) {
-      toast({ title: "Fill required fields", description: "Name, price and category are required.", variant: "destructive" });
+      toast({ title: "Fill required fields", description: "Name, selling price and category are required.", variant: "destructive" });
       return;
     }
     setSaving(true);
     const productData = {
-      ...form,
+      name: form.name,
+      price: form.price,
+      costPrice: form.costPrice || 0,
+      meeshoUrl: form.meeshoUrl || "",
+      description: form.description,
+      image: form.image,
+      images: form.images,
+      category: form.category,
       inStock: form.quantity > 0,
+      quantity: form.quantity,
       sizes: isJewelry ? [] : form.sizes,
     };
     try {
@@ -279,6 +283,8 @@ const AdminPanel = () => {
     setForm({
       name: product.name,
       price: product.price,
+      costPrice: product.costPrice || 0,
+      meeshoUrl: product.meeshoUrl || "",
       description: product.description,
       image: product.image,
       images: product.images || [],
@@ -339,9 +345,7 @@ const AdminPanel = () => {
             <ShoppingBag className="h-5 w-5 text-primary" />
             <span className="font-heading text-lg font-bold text-foreground">
               Urban <span className="text-primary">Dhage</span>
-              <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 font-body text-xs font-semibold text-primary">
-                Admin
-              </span>
+              <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 font-body text-xs font-semibold text-primary">Admin</span>
             </span>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground">
@@ -375,9 +379,7 @@ const AdminPanel = () => {
             <div className="mb-5 flex items-center justify-between">
               <h2 className="font-heading text-xl font-semibold text-foreground">
                 Products
-                <span className="ml-2 font-body text-sm font-normal text-muted-foreground">
-                  ({products.length})
-                </span>
+                <span className="ml-2 font-body text-sm font-normal text-muted-foreground">({products.length})</span>
               </h2>
               {!showForm && (
                 <Button onClick={openNewForm}>
@@ -406,20 +408,16 @@ const AdminPanel = () => {
 
                   {/* Meesho Import */}
                   <div className={`rounded-xl border-2 border-dashed p-4 transition-colors ${
-                    importStatus === "success"
-                      ? "border-green-400 bg-green-50/50"
-                      : importStatus === "error"
-                      ? "border-red-300 bg-red-50/50"
-                      : "border-saffron/30 bg-saffron/5"
+                    importStatus === "success" ? "border-green-400 bg-green-50/50"
+                    : importStatus === "error" ? "border-red-300 bg-red-50/50"
+                    : "border-primary/30 bg-primary/5"
                   }`}>
                     <div className="mb-3 flex items-center gap-2">
-                      <Link2 className="h-4 w-4 text-saffron" />
-                      <p className="font-body text-sm font-semibold text-foreground">
-                        Import from Meesho
-                      </p>
+                      <Link2 className="h-4 w-4 text-primary" />
+                      <p className="font-body text-sm font-semibold text-foreground">Import from Meesho</p>
                       {importStatus === "success" && (
                         <span className="flex items-center gap-1 font-body text-xs font-medium text-green-600">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Imported!
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Imported! Now set your selling price.
                         </span>
                       )}
                       {importStatus === "error" && (
@@ -430,7 +428,7 @@ const AdminPanel = () => {
                     </div>
                     <div className="flex gap-2">
                       <Input
-                        placeholder="Paste Meesho product link e.g. meesho.com/saree/p/abc123"
+                        placeholder="Paste Meesho product link..."
                         value={meeshoUrl}
                         onChange={(e) => { setMeeshoUrl(e.target.value); setImportStatus("idle"); }}
                         className="font-body text-sm"
@@ -443,19 +441,18 @@ const AdminPanel = () => {
                         variant="outline"
                         className="shrink-0"
                       >
-                        {importing ? (
-                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing</>
-                        ) : "Import"}
+                        {importing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing</> : "Import"}
                       </Button>
                     </div>
                     <p className="mt-1.5 font-body text-xs text-muted-foreground">
-                      Name, price, description, sizes & images auto-fill. You can edit anything after.
+                      Name, cost price, description, sizes & images auto-fill. Set your own selling price below.
                     </p>
                   </div>
 
                   {/* Fields */}
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1">
+
+                    <div className="space-y-1 sm:col-span-2">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Name *</label>
                       <Input
                         placeholder="e.g. Kanjivaram Silk Saree"
@@ -463,15 +460,51 @@ const AdminPanel = () => {
                         onChange={(e) => setForm({ ...form, name: e.target.value })}
                       />
                     </div>
+
+                    {/* Cost Price */}
                     <div className="space-y-1">
-                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price (₹) *</label>
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Cost Price (₹)
+                        <span className="ml-1 normal-case font-normal text-muted-foreground/70">— your buying price</span>
+                      </label>
+                      <Input
+                        placeholder="Auto-filled from Meesho"
+                        type="number"
+                        min={0}
+                        value={form.costPrice || ""}
+                        onChange={(e) => setForm({ ...form, costPrice: Number(e.target.value) })}
+                        className="bg-muted/40"
+                      />
+                    </div>
+
+                    {/* Selling Price */}
+                    <div className="space-y-1">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Selling Price (₹) *
+                        <span className="ml-1 normal-case font-normal text-muted-foreground/70">— shown to customers</span>
+                      </label>
                       <Input
                         placeholder="e.g. 1299"
                         type="number"
+                        min={0}
                         value={form.price || ""}
                         onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
                       />
                     </div>
+
+                    {/* Margin indicator */}
+                    {form.costPrice > 0 && form.price > 0 && (
+                      <div className={`sm:col-span-2 flex items-center gap-2 rounded-lg px-4 py-2.5 font-body text-sm ${
+                        margin > 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"
+                      }`}>
+                        <TrendingUp className="h-4 w-4 shrink-0" />
+                        {margin > 0
+                          ? `Profit: ₹${margin} per unit (${marginPct}% margin)`
+                          : `Warning: Selling price is lower than cost price!`
+                        }
+                      </div>
+                    )}
+
                     <div className="space-y-1">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Category *</label>
                       <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
@@ -483,6 +516,7 @@ const AdminPanel = () => {
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div className="space-y-1">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stock Quantity *</label>
                       <Input
@@ -496,6 +530,7 @@ const AdminPanel = () => {
                         }}
                       />
                     </div>
+
                     <div className="space-y-1 sm:col-span-2">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</label>
                       <textarea
@@ -506,6 +541,20 @@ const AdminPanel = () => {
                         className="w-full rounded-md border border-input bg-background px-3 py-2 font-body text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                       />
                     </div>
+
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Meesho URL
+                        <span className="ml-1 normal-case font-normal text-muted-foreground/70">— auto-filled on import</span>
+                      </label>
+                      <Input
+                        placeholder="https://meesho.com/..."
+                        value={form.meeshoUrl || ""}
+                        onChange={(e) => setForm({ ...form, meeshoUrl: e.target.value })}
+                        className="font-mono text-xs bg-muted/40"
+                      />
+                    </div>
+
                   </div>
 
                   {/* Sizes */}
@@ -588,6 +637,7 @@ const AdminPanel = () => {
                       Cancel
                     </Button>
                   </div>
+
                 </div>
               </div>
             )}
@@ -611,21 +661,38 @@ const AdminPanel = () => {
                     <img
                       src={product.image}
                       alt={product.name}
-                      className="h-16 w-16 rounded-lg object-cover"
+                      className="h-16 w-16 rounded-lg object-cover shrink-0"
                       onError={(e) => { (e.target as HTMLImageElement).src = "https://placehold.co/64x64?text=No+Image"; }}
                     />
                     <div className="min-w-0 flex-1">
-                      <h4 className="truncate font-body font-semibold text-foreground">{product.name}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="truncate font-body font-semibold text-foreground">{product.name}</h4>
+                        {product.meeshoUrl && (
+                          
+                            href={product.meeshoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-body text-[10px] font-semibold text-primary hover:bg-primary/20"
+                          >
+                            Meesho ↗
+                          </a>
+                        )}
+                      </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className="font-body text-sm text-muted-foreground">₹{product.price}</span>
+                        <span className="font-body text-sm font-semibold text-foreground">₹{product.price}</span>
+                        {product.costPrice && product.costPrice > 0 && (
+                          <>
+                            <span className="font-body text-xs text-muted-foreground line-through">Cost ₹{product.costPrice}</span>
+                            <span className="font-body text-xs font-semibold text-green-600">
+                              +₹{product.price - product.costPrice} ({Math.round(((product.price - product.costPrice) / product.costPrice) * 100)}%)
+                            </span>
+                          </>
+                        )}
                         <span className="text-muted-foreground">·</span>
                         <span className="font-body text-sm text-muted-foreground">{product.category}</span>
                         <span className="text-muted-foreground">·</span>
                         <span className="font-body text-sm text-muted-foreground">Stock: {product.quantity || 0}</span>
-                        {product.sizes && product.sizes.length > 0 && (
-                          <><span className="text-muted-foreground">·</span>
-                          <span className="font-body text-sm text-muted-foreground">{product.sizes.join(", ")}</span></>
-                        )}
                         {(product.quantity || 0) <= 0 && (
                           <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-body text-xs font-medium text-destructive">Out of stock</span>
                         )}
