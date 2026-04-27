@@ -137,7 +137,7 @@ const FAQs = () => {
           <p className="font-heading text-base font-semibold text-foreground mb-1">Still have questions?</p>
           <p className="font-body text-sm text-muted-foreground mb-4">Our team is happy to help you out.</p>
           <div className="flex flex-wrap justify-center gap-3">
-            
+            <a
               href="https://wa.me/918419856013"
               target="_blank"
               rel="noopener noreferrer"
@@ -145,7 +145,7 @@ const FAQs = () => {
             >
               WhatsApp Us
             </a>
-            
+            <a
               href="mailto:support@urbandhage.in"
               className="rounded-full border border-primary px-5 py-2 font-body text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
             >
