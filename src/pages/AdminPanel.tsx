@@ -22,38 +22,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
-  LogOut, Plus, Pencil, Trash2, Upload, X,
+  LogOut, Plus, Pencil, Trash2, X,
   ShoppingBag, PackageOpen, Loader2, Link2,
   ImagePlus, CheckCircle2, AlertCircle, TrendingUp,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-// ─── Meesho helpers ──────────────────────────────────────────────────────────
-
 function extractMeeshoId(url: string): string | null {
   const clean = url.trim().replace(/['", ]/g, "");
   const match = clean.match(/\/(?:p|product)\/([a-zA-Z0-9]+)/);
   if (!match) return null;
-  try {
-    return String(parseInt(match[1], 36));
-  } catch {
-    return null;
-  }
+  try { return String(parseInt(match[1], 36)); } catch { return null; }
 }
 
 async function fetchMeeshoProduct(productId: string) {
-  const response = await fetch(`/api/meesho?id=${productId}`, {
-    headers: {
-      authorization: "32c4d8137cn9eb493a1921f203173080",
-      "app-version": "27.6",
-      "application-id": "com.meesho.supply",
-      "country-iso": "in",
-      "app-client-id": "android",
-      "user-agent": "okhttp/4.9.0",
-    },
-  });
+  const response = await fetch(`/api/meesho?id=${productId}`);
   if (!response.ok) throw new Error(`Meesho API returned ${response.status}`);
-
   const data = await response.json();
   const catalog = data?.catalog;
   const product = catalog?.products?.[0];
@@ -80,9 +64,7 @@ async function fetchMeeshoProduct(productId: string) {
   const description =
     (catalog?.description?.sections || [])
       .map((s: any) => s?.description || "")
-      .filter(Boolean)
-      .join(" ")
-      .trim() || product?.name || "";
+      .filter(Boolean).join(" ").trim() || product?.name || "";
 
   return {
     name: product.name || "Unnamed Product",
@@ -96,8 +78,6 @@ async function fetchMeeshoProduct(productId: string) {
     category: catalog?.primary_tag?.name || "Uncategorized",
   };
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const emptyProduct = {
   name: "",
@@ -113,8 +93,6 @@ const emptyProduct = {
   sizes: [] as string[],
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 const AdminPanel = () => {
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -128,7 +106,6 @@ const AdminPanel = () => {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"products" | "orders">("products");
-
   const [meeshoUrl, setMeeshoUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<"idle" | "success" | "error">("idle");
@@ -136,34 +113,24 @@ const AdminPanel = () => {
   const isJewelry = JEWELRY_CATEGORIES.some(
     (c) => c.toLowerCase() === form.category.toLowerCase()
   );
-
   const margin = form.price && form.costPrice ? form.price - form.costPrice : 0;
   const marginPct = form.costPrice && form.price
-    ? Math.round(((form.price - form.costPrice) / form.costPrice) * 100)
-    : 0;
-
-  // ── Firestore ──────────────────────────────────────────────────────────────
+    ? Math.round(((form.price - form.costPrice) / form.costPrice) * 100) : 0;
 
   const fetchProducts = async () => {
     setLoading(true);
     try {
       const snapshot = await getDocs(collection(db, "products"));
       const items = snapshot.docs.map((d) => ({
-        ...d.data(),
-        id: d.id,
-        firestoreId: d.id,
+        ...d.data(), id: d.id, firestoreId: d.id,
       })) as (Product & { firestoreId: string })[];
       setProducts(items);
     } catch {
       toast({ title: "Error", description: "Failed to fetch products.", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchProducts(); }, []);
-
-  // ── Image upload ───────────────────────────────────────────────────────────
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -173,17 +140,13 @@ const AdminPanel = () => {
       for (const file of Array.from(files)) {
         const url = await uploadToCloudinary(file);
         setForm((prev) => ({
-          ...prev,
-          image: prev.image || url,
-          images: [...prev.images, url],
+          ...prev, image: prev.image || url, images: [...prev.images, url],
         }));
       }
       toast({ title: `${files.length} image(s) uploaded!` });
     } catch {
       toast({ title: "Upload failed", variant: "destructive" });
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   };
 
   const removeImage = (index: number) => {
@@ -202,8 +165,6 @@ const AdminPanel = () => {
     });
   };
 
-  // ── Meesho import ──────────────────────────────────────────────────────────
-
   const handleMeeshoImport = async () => {
     const id = extractMeeshoId(meeshoUrl);
     if (!id) {
@@ -216,9 +177,9 @@ const AdminPanel = () => {
       const product = await fetchMeeshoProduct(id);
       setForm({
         name: product.name,
-        price: 0,                     // admin fills selling price manually
-        costPrice: product.costPrice, // Meesho price = your cost
-        meeshoUrl: meeshoUrl.trim(),  // store the source URL
+        price: 0,
+        costPrice: product.costPrice,
+        meeshoUrl: meeshoUrl.trim(),
         description: product.description,
         image: product.image,
         images: product.images,
@@ -229,16 +190,12 @@ const AdminPanel = () => {
       });
       setImportStatus("success");
       setMeeshoUrl("");
-      toast({ title: "✅ Imported from Meesho!", description: `Cost price: ₹${product.costPrice}. Now set your selling price.` });
+      toast({ title: "Imported from Meesho!", description: `Cost price: ₹${product.costPrice}. Now set your selling price.` });
     } catch (err: any) {
       setImportStatus("error");
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
-    } finally {
-      setImporting(false);
-    }
+    } finally { setImporting(false); }
   };
-
-  // ── Save / Edit / Delete ───────────────────────────────────────────────────
 
   const handleSave = async () => {
     if (!form.name || !form.price || !form.category) {
@@ -274,9 +231,7 @@ const AdminPanel = () => {
       fetchProducts();
     } catch {
       toast({ title: "Save failed", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const handleEdit = (product: Product & { firestoreId?: string }) => {
@@ -333,12 +288,8 @@ const AdminPanel = () => {
     setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 50);
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-background">
-
-      {/* Header */}
       <header className="sticky top-0 z-10 border-b bg-card/80 backdrop-blur-sm px-4 py-3 shadow-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-2">
@@ -355,8 +306,6 @@ const AdminPanel = () => {
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-6">
-
-        {/* Tabs */}
         <div className="mb-6 flex gap-2">
           {(["products", "orders"] as const).map((tab) => (
             <button
@@ -373,7 +322,6 @@ const AdminPanel = () => {
           ))}
         </div>
 
-        {/* ── Products Tab ── */}
         {activeTab === "products" && (
           <>
             <div className="mb-5 flex items-center justify-between">
@@ -388,10 +336,8 @@ const AdminPanel = () => {
               )}
             </div>
 
-            {/* ── Form ── */}
             {showForm && (
               <div className="mb-8 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-
                 <div className="flex items-center justify-between border-b border-border bg-muted/30 px-6 py-4">
                   <h3 className="font-heading text-base font-semibold text-foreground">
                     {editingId ? "Edit Product" : "New Product"}
@@ -405,8 +351,6 @@ const AdminPanel = () => {
                 </div>
 
                 <div className="space-y-6 p-6">
-
-                  {/* Meesho Import */}
                   <div className={`rounded-xl border-2 border-dashed p-4 transition-colors ${
                     importStatus === "success" ? "border-green-400 bg-green-50/50"
                     : importStatus === "error" ? "border-red-300 bg-red-50/50"
@@ -445,13 +389,11 @@ const AdminPanel = () => {
                       </Button>
                     </div>
                     <p className="mt-1.5 font-body text-xs text-muted-foreground">
-                      Name, cost price, description, sizes & images auto-fill. Set your own selling price below.
+                      Name, cost price, description, sizes and images auto-fill. Set your own selling price below.
                     </p>
                   </div>
 
-                  {/* Fields */}
                   <div className="grid gap-4 sm:grid-cols-2">
-
                     <div className="space-y-1 sm:col-span-2">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Name *</label>
                       <Input
@@ -461,11 +403,9 @@ const AdminPanel = () => {
                       />
                     </div>
 
-                    {/* Cost Price */}
                     <div className="space-y-1">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Cost Price (₹)
-                        <span className="ml-1 normal-case font-normal text-muted-foreground/70">— your buying price</span>
+                        Cost Price (₹) <span className="normal-case font-normal text-muted-foreground/70">— your buying price</span>
                       </label>
                       <Input
                         placeholder="Auto-filled from Meesho"
@@ -477,11 +417,9 @@ const AdminPanel = () => {
                       />
                     </div>
 
-                    {/* Selling Price */}
                     <div className="space-y-1">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Selling Price (₹) *
-                        <span className="ml-1 normal-case font-normal text-muted-foreground/70">— shown to customers</span>
+                        Selling Price (₹) * <span className="normal-case font-normal text-muted-foreground/70">— shown to customers</span>
                       </label>
                       <Input
                         placeholder="e.g. 1299"
@@ -492,7 +430,6 @@ const AdminPanel = () => {
                       />
                     </div>
 
-                    {/* Margin indicator */}
                     {form.costPrice > 0 && form.price > 0 && (
                       <div className={`sm:col-span-2 flex items-center gap-2 rounded-lg px-4 py-2.5 font-body text-sm ${
                         margin > 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"
@@ -544,8 +481,7 @@ const AdminPanel = () => {
 
                     <div className="space-y-1 sm:col-span-2">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Meesho URL
-                        <span className="ml-1 normal-case font-normal text-muted-foreground/70">— auto-filled on import</span>
+                        Meesho URL <span className="normal-case font-normal text-muted-foreground/70">— auto-filled on import</span>
                       </label>
                       <Input
                         placeholder="https://meesho.com/..."
@@ -554,10 +490,8 @@ const AdminPanel = () => {
                         className="font-mono text-xs bg-muted/40"
                       />
                     </div>
-
                   </div>
 
-                  {/* Sizes */}
                   {!isJewelry && (
                     <div className="space-y-2">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Available Sizes</label>
@@ -580,7 +514,6 @@ const AdminPanel = () => {
                     </div>
                   )}
 
-                  {/* Images */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Images</label>
@@ -625,7 +558,6 @@ const AdminPanel = () => {
                     )}
                   </div>
 
-                  {/* Actions */}
                   <div className="flex gap-3 border-t border-border pt-4">
                     <Button onClick={handleSave} disabled={saving} className="min-w-[130px]">
                       {saving
@@ -637,12 +569,10 @@ const AdminPanel = () => {
                       Cancel
                     </Button>
                   </div>
-
                 </div>
               </div>
             )}
 
-            {/* Product list */}
             {loading ? (
               <div className="flex items-center justify-center py-20 text-muted-foreground">
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading products...
@@ -665,25 +595,25 @@ const AdminPanel = () => {
                       onError={(e) => { (e.target as HTMLImageElement).src = "https://placehold.co/64x64?text=No+Image"; }}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="truncate font-body font-semibold text-foreground">{product.name}</h4>
-                       {product.meeshoUrl && (
-  
-    href={product.meeshoUrl}
-    target="_blank"
-    rel="noopener noreferrer"
-    onClick={(e) => e.stopPropagation()}
-    className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-body text-[10px] font-semibold text-primary hover:bg-primary/20"
-  >
-    Meesho ↗
-  </a>
-)}
+                        {product.meeshoUrl && (
+                          
+                            href={product.meeshoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-body text-[10px] font-semibold text-primary hover:bg-primary/20"
+                          >
+                            Meesho
+                          </a>
+                        )}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span className="font-body text-sm font-semibold text-foreground">₹{product.price}</span>
                         {product.costPrice && product.costPrice > 0 && (
                           <>
-                            <span className="font-body text-xs text-muted-foreground line-through">Cost ₹{product.costPrice}</span>
+                            <span className="font-body text-xs text-muted-foreground">Cost ₹{product.costPrice}</span>
                             <span className="font-body text-xs font-semibold text-green-600">
                               +₹{product.price - product.costPrice} ({Math.round(((product.price - product.costPrice) / product.costPrice) * 100)}%)
                             </span>
@@ -713,7 +643,6 @@ const AdminPanel = () => {
           </>
         )}
 
-        {/* Orders Tab */}
         {activeTab === "orders" && (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-24 text-center">
             <PackageOpen className="mb-3 h-10 w-10 text-muted-foreground/40" />
@@ -721,7 +650,6 @@ const AdminPanel = () => {
             <p className="mt-1 font-body text-sm text-muted-foreground">Orders from Firestore will appear here.</p>
           </div>
         )}
-
       </div>
     </div>
   );
