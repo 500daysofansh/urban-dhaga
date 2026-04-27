@@ -13,10 +13,6 @@ import AdminLogin from "./pages/AdminLogin.tsx";
 import AdminPanel from "./pages/AdminPanel.tsx";
 import OrderConfirmation from "./pages/OrderConfirmation.tsx";
 import ProductDetail from "./pages/ProductDetail.tsx";
-import ShippingInfo from "./pages/ShippingInfo.tsx";
-import Returns from "./pages/Returns.tsx";
-import SizeGuide from "./pages/SizeGuide.tsx";
-import FAQs from "./pages/FAQs.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -35,10 +31,6 @@ const App = () => (
               <Route path="/cart" element={<Cart />} />
               <Route path="/login" element={<UserLogin />} />
               <Route path="/order-confirmation" element={<OrderConfirmation />} />
-              <Route path="/shipping" element={<ShippingInfo />} />
-              <Route path="/returns" element={<Returns />} />
-              <Route path="/size-guide" element={<SizeGuide />} />
-              <Route path="/faqs" element={<FAQs />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route
                 path="/admin"
@@ -48,6 +40,7 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </CartProvider>
