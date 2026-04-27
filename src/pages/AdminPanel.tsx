@@ -598,7 +598,7 @@ const AdminPanel = () => {
                       <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="truncate font-body font-semibold text-foreground">{product.name}</h4>
                         {product.meeshoUrl && (
-                          
+                          <a
                             href={product.meeshoUrl}
                             target="_blank"
                             rel="noopener noreferrer"
