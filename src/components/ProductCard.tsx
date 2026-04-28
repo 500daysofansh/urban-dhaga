@@ -80,6 +80,9 @@ const ProductCard = ({ product }: ProductCardProps) => {
             alt={product.name}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
+            decoding="async"
+            fetchPriority={displayImageIndex === 0 ? "low" : "auto"}
+            style={{ contentVisibility: "auto" }}
           />
 
           <div className="absolute left-3 top-3 flex flex-col gap-1.5">
