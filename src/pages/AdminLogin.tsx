@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, Loader2 } from "lucide-react";
 
 // Must match the list in ProtectedRoute.tsx
-const ADMIN_EMAILS = ["support@urbandhage.in"];
+const ADMIN_EMAILS = ["support@urbandhage.in",
+                     "urbandhagee@gmail.com"];
 
 const AdminLogin = () => {
   const [email, setEmail] = useState("");
