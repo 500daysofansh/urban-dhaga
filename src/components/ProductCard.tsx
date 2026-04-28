@@ -21,6 +21,7 @@ const CRAFT_STORIES: Record<string, string> = {
   "Accessories": "Handcrafted by artisan families from Rajasthan",
   "Lehengas": "Chikankari embroidery from Lucknow",
   "Jewellery": "Kundan work by goldsmiths from Bikaner",
+  "Western": "Contemporary styles with Indian craftsmanship",
 };
 
 const ProductCard = ({ product }: ProductCardProps) => {
