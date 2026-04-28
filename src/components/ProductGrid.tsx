@@ -6,6 +6,11 @@ import ProductCard from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
+const CATEGORY_ORDER = [
+  "Sarees", "Kurtas", "Lehengas", "Dupattas",
+  "Western", "Accessories", "Jewellery",
+];
+
 const SkeletonCard = () => (
   <div className="overflow-hidden rounded-lg border-0 shadow-sm">
     <div className="aspect-[4/5] animate-pulse bg-muted" />
@@ -31,27 +36,39 @@ const ProductGrid = () => {
           id: doc.id,
           ...doc.data(),
         })) as Product[];
+
         setProducts(items);
-        setCategories([...new Set(items.map((p) => p.category))]);
+
+        // Sort categories in defined order, unknown ones go at the end
+        const uniqueCats = [...new Set(items.map((p) => p.category))];
+        const sorted = [
+          ...CATEGORY_ORDER.filter((c) => uniqueCats.includes(c)),
+          ...uniqueCats.filter((c) => !CATEGORY_ORDER.includes(c)),
+        ];
+        setCategories(sorted);
+
+        // Preload first 4 product images for faster above-the-fold rendering
+        items.slice(0, 4).forEach((product) => {
+          const img = new Image();
+          img.src = product.image;
+        });
       } catch (error) {
         console.error("Failed to fetch products:", error);
       } finally {
         setLoading(false);
       }
     };
+
     fetchProducts();
   }, []);
 
-  // Listen for category filter events from navbar
+  // Listen for category filter events from Navbar/Footer
   useEffect(() => {
     const handleFilterCategory = (e: Event) => {
       const category = (e as CustomEvent).detail as string;
-      // "New Arrivals" shows all
-      if (category === "New Arrivals") {
-        setActiveCategory(null);
-      } else {
-        setActiveCategory(category);
-      }
+      setActiveCategory(category === "New Arrivals" ? null : category);
+      const el = document.getElementById("products");
+      if (el) el.scrollIntoView({ behavior: "smooth" });
     };
     window.addEventListener("filter-category", handleFilterCategory);
     return () => window.removeEventListener("filter-category", handleFilterCategory);
@@ -65,10 +82,16 @@ const ProductGrid = () => {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="mb-8">
+          <div className="h-4 w-32 animate-pulse rounded bg-muted mb-3" />
           <div className="h-8 w-48 animate-pulse rounded bg-muted" />
           <div className="mt-2 h-4 w-72 animate-pulse rounded bg-muted" />
         </div>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="mb-8 flex flex-wrap gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-8 w-20 animate-pulse rounded-full bg-muted" />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <SkeletonCard key={i} />
           ))}
@@ -88,6 +111,7 @@ const ProductGrid = () => {
 
   return (
     <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -99,10 +123,13 @@ const ProductGrid = () => {
           Curated for You
         </p>
         <h2 className="text-3xl font-bold text-foreground font-heading sm:text-4xl">Our Collection</h2>
-        <p className="mt-2 text-muted-foreground font-body">Explore our handpicked selection of traditional wear</p>
+        <p className="mt-2 text-muted-foreground font-body">
+          Explore our handpicked selection of traditional and western wear
+        </p>
       </motion.div>
 
-      {categories.length > 1 && (
+      {/* Category filter pills */}
+      {categories.length > 0 && (
         <div className="mb-8 flex flex-wrap gap-2">
           <Button
             variant={activeCategory === null ? "default" : "outline"}
@@ -126,11 +153,39 @@ const ProductGrid = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {filtered.map((product) => (
-          <ProductCard key={product.id} product={product} />
-        ))}
-      </div>
+      {/* Product count */}
+      <p className="mb-4 font-body text-sm text-muted-foreground">
+        {filtered.length} {filtered.length === 1 ? "product" : "products"}
+        {activeCategory ? ` in ${activeCategory}` : ""}
+      </p>
+
+      {/* Grid */}
+      {filtered.length === 0 ? (
+        <div className="py-20 text-center">
+          <p className="font-heading text-lg font-semibold text-foreground">No products in this category yet</p>
+          <p className="mt-1 font-body text-sm text-muted-foreground">Check back soon or browse all products</p>
+          <Button className="mt-4 rounded-full" onClick={() => setActiveCategory(null)}>
+            View All
+          </Button>
+        </div>
+      ) : (
+        <motion.div
+          key={activeCategory}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        >
+          {filtered.map((product, index) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              priority={index < 4}
+            />
+          ))}
+        </motion.div>
+      )}
+
     </section>
   );
 };
