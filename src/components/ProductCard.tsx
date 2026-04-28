@@ -21,21 +21,6 @@ const CRAFT_STORIES: Record<string, string> = {
   "Western": "Contemporary styles with Indian craftsmanship",
 };
 
-const BADGE: Record<string, { label: string; className: string }> = {
-  outOfStock: {
-    label: "Out of stock",
-    className: "bg-muted text-muted-foreground border-border",
-  },
-  limited: {
-    label: "Limited",
-    className: "bg-accent/10 text-accent border-accent/30",
-  },
-  handcrafted: {
-    label: "Handcrafted",
-    className: "bg-background text-muted-foreground border-border",
-  },
-};
-
 const StarRating = ({ rating, count }: { rating: number; count: number }) => (
   <div className="flex items-center gap-1">
     <div className="flex">
@@ -59,6 +44,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
+  const [imagesPreloaded, setImagesPreloaded] = useState(false);
 
   const allImages = product.images?.length > 0 ? product.images : [product.image];
   const isJewelry = JEWELRY_CATEGORIES.some(
@@ -68,11 +54,12 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const outOfStock = !product.inStock || product.quantity <= 0;
   const isLimited = !outOfStock && product.quantity <= 5;
 
-  const badge = outOfStock
-    ? BADGE.outOfStock
+  const badgeLabel = outOfStock ? "Out of stock" : isLimited ? "Limited" : "Handcrafted";
+  const badgeClass = outOfStock
+    ? "bg-muted text-muted-foreground border-border"
     : isLimited
-    ? BADGE.limited
-    : BADGE.handcrafted;
+    ? "bg-accent/10 text-accent border-accent/30"
+    : "bg-background text-muted-foreground border-border";
 
   const { rating, reviewCount } = useMemo(() => ({
     rating: 4 + (product.id.charCodeAt(0) % 10) / 10,
@@ -82,6 +69,18 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const displayImage = isHovered && allImages.length > 1
     ? allImages[1]
     : allImages[0];
+
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+    // Preload all product images on first hover so detail page loads instantly
+    if (!imagesPreloaded && allImages.length > 1) {
+      allImages.slice(1).forEach((src) => {
+        const img = new Image();
+        img.src = src;
+      });
+      setImagesPreloaded(true);
+    }
+  };
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -100,7 +99,9 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const handleWishlist = (e: React.MouseEvent) => {
     e.stopPropagation();
     setWishlisted((prev) => !prev);
-    toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist" });
+    toast({
+      title: wishlisted ? "Removed from wishlist" : "Added to wishlist",
+    });
   };
 
   const handleSizeClick = (e: React.MouseEvent, size: string) => {
@@ -117,7 +118,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     >
       <div
         className="group cursor-pointer overflow-hidden rounded-xl border border-border bg-card transition-colors duration-200 hover:border-border/80"
-        onMouseEnter={() => setIsHovered(true)}
+        onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsHovered(false)}
         onClick={() => navigate(`/product/${product.id}`)}
       >
@@ -133,9 +134,22 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             } ${outOfStock ? "opacity-70" : ""}`}
           />
 
+          {/* Hidden preload images — forces browser to cache all images */}
+          {allImages.slice(1).map((src, idx) => (
+            <img
+              key={idx}
+              src={src}
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+              decoding="async"
+              className="hidden"
+            />
+          ))}
+
           {/* Badge top-left */}
-          <span className={`absolute left-2.5 top-2.5 rounded-full border px-2.5 py-0.5 font-body text-[11px] font-medium ${badge.className}`}>
-            {badge.label}
+          <span className={`absolute left-2.5 top-2.5 rounded-full border px-2.5 py-0.5 font-body text-[11px] font-medium ${badgeClass}`}>
+            {badgeLabel}
           </span>
 
           {/* Wishlist top-right */}
