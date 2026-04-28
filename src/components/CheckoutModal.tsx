@@ -60,7 +60,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       .join("\n");
 
     const options: any = {
-      key: "rzp_live_SYldm8DNDEii9F",
+      key: "rzp_live_Siq5Fd24TZ9Zxl",
       amount: totalPrice * 100,
       currency: "INR",
       name: "Urban Dhage",
