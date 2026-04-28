@@ -2,16 +2,13 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Product, JEWELRY_CATEGORIES } from "@/types/product";
 import { useCart } from "@/contexts/CartContext";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ShoppingBag, Star, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ShoppingBag, Heart } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface ProductCardProps {
   product: Product;
+  priority?: boolean;
 }
 
 const CRAFT_STORIES: Record<string, string> = {
@@ -24,153 +21,181 @@ const CRAFT_STORIES: Record<string, string> = {
   "Western": "Contemporary styles with Indian craftsmanship",
 };
 
-const ProductCard = ({ product }: ProductCardProps) => {
+const BADGE: Record<string, { label: string; className: string }> = {
+  outOfStock: {
+    label: "Out of stock",
+    className: "bg-muted text-muted-foreground border-border",
+  },
+  limited: {
+    label: "Limited",
+    className: "bg-accent/10 text-accent border-accent/30",
+  },
+  handcrafted: {
+    label: "Handcrafted",
+    className: "bg-background text-muted-foreground border-border",
+  },
+};
+
+const StarRating = ({ rating, count }: { rating: number; count: number }) => (
+  <div className="flex items-center gap-1">
+    <div className="flex">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <svg key={i} className="h-2.5 w-2.5" viewBox="0 0 12 12">
+          <polygon
+            points="6,1 7.5,4.5 11,5 8.5,7.5 9.2,11 6,9.2 2.8,11 3.5,7.5 1,5 4.5,4.5"
+            fill={i < Math.floor(rating) ? "hsl(var(--accent))" : "hsl(var(--border))"}
+          />
+        </svg>
+      ))}
+    </div>
+    <span className="font-body text-[11px] text-muted-foreground">({count})</span>
+  </div>
+);
+
+const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const { addToCart } = useCart();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
-  const [currentImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
+  const [wishlisted, setWishlisted] = useState(false);
 
-  const allImages = product.images && product.images.length > 0 ? product.images : [product.image];
-
-  const isJewelry = JEWELRY_CATEGORIES.some((c) => c.toLowerCase() === product.category.toLowerCase());
+  const allImages = product.images?.length > 0 ? product.images : [product.image];
+  const isJewelry = JEWELRY_CATEGORIES.some(
+    (c) => c.toLowerCase() === product.category.toLowerCase()
+  );
   const hasSizes = !isJewelry && product.sizes && product.sizes.length > 0;
   const outOfStock = !product.inStock || product.quantity <= 0;
+  const isLimited = !outOfStock && product.quantity <= 5;
 
-  const craftStory = CRAFT_STORIES[product.category] || "Handcrafted by Indian artisans";
-  
-  // Use useMemo to keep rating/review stable across re-renders
+  const badge = outOfStock
+    ? BADGE.outOfStock
+    : isLimited
+    ? BADGE.limited
+    : BADGE.handcrafted;
+
   const { rating, reviewCount } = useMemo(() => ({
     rating: 4 + (product.id.charCodeAt(0) % 10) / 10,
     reviewCount: 20 + (product.id.charCodeAt(0) * 7) % 180,
   }), [product.id]);
 
+  const displayImage = isHovered && allImages.length > 1
+    ? allImages[1]
+    : allImages[0];
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (outOfStock) return;
     if (hasSizes && !selectedSize) {
       toast({ title: "Please select a size", variant: "destructive" });
       return;
     }
     addToCart(product, selectedSize);
     toast({
-      title: "Added to cart 🛒",
-      description: `${product.name}${selectedSize ? ` (${selectedSize})` : ""} has been added to your cart.`,
+      title: "Added to cart",
+      description: `${product.name}${selectedSize ? ` (${selectedSize})` : ""}`,
     });
   };
 
-  const displayImageIndex = isHovered && allImages.length > 1 ? 1 : currentImageIndex;
+  const handleWishlist = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setWishlisted((prev) => !prev);
+    toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist" });
+  };
+
+  const handleSizeClick = (e: React.MouseEvent, size: string) => {
+    e.stopPropagation();
+    setSelectedSize((prev) => (prev === size ? undefined : size));
+  };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-50px" }}
-      transition={{ duration: 0.4 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.35 }}
     >
-      <Card
-        className="group overflow-hidden border-0 shadow-sm transition-all duration-300 hover:shadow-xl cursor-pointer"
+      <div
+        className="group cursor-pointer overflow-hidden rounded-xl border border-border bg-card transition-colors duration-200 hover:border-border/80"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         onClick={() => navigate(`/product/${product.id}`)}
       >
+        {/* Image */}
         <div className="relative aspect-[4/5] overflow-hidden bg-muted">
           <img
-            src={allImages[displayImageIndex]}
+            src={displayImage}
             alt={product.name}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-            loading="lazy"
+            loading={priority ? "eager" : "lazy"}
             decoding="async"
-            fetchPriority={displayImageIndex === 0 ? "low" : "auto"}
-            style={{ contentVisibility: "auto" }}
+            className={`h-full w-full object-cover transition-transform duration-500 ${
+              isHovered ? "scale-105" : "scale-100"
+            } ${outOfStock ? "opacity-70" : ""}`}
           />
 
-          <div className="absolute left-3 top-3 flex flex-col gap-1.5">
-            {outOfStock && (
-              <Badge variant="secondary" className="font-body text-xs">Out of Stock</Badge>
-            )}
-            {!outOfStock && product.quantity <= 5 && (
-              <Badge className="bg-saffron text-primary-foreground font-body text-xs animate-pulse">
-                Limited Edition
-              </Badge>
-            )}
-            {!outOfStock && product.quantity > 5 && (
-              <Badge className="bg-accent text-accent-foreground font-body text-xs">
-                Handcrafted
-              </Badge>
-            )}
-          </div>
+          {/* Badge top-left */}
+          <span className={`absolute left-2.5 top-2.5 rounded-full border px-2.5 py-0.5 font-body text-[11px] font-medium ${badge.className}`}>
+            {badge.label}
+          </span>
 
-          <Badge className="absolute right-3 top-3 bg-background/80 text-foreground backdrop-blur-sm font-body text-xs">
-            {product.category}
-          </Badge>
+          {/* Wishlist top-right */}
+          <button
+            onClick={handleWishlist}
+            className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur-sm transition-colors hover:bg-background"
+          >
+            <Heart
+              className={`h-3.5 w-3.5 transition-colors ${
+                wishlisted ? "fill-accent text-accent" : "text-muted-foreground"
+              }`}
+            />
+          </button>
 
-          <div className="absolute inset-x-0 bottom-0 translate-y-full transition-transform duration-300 group-hover:translate-y-0">
-            <div className="bg-gradient-to-t from-foreground/80 to-transparent p-4 pt-10">
-              <Button
-                size="sm"
-                onClick={handleAddToCart}
-                disabled={outOfStock}
-                className="w-full gap-1.5 font-body rounded-full"
-              >
-                <ShoppingBag className="h-3.5 w-3.5" />
-                Quick Add
-              </Button>
-            </div>
-          </div>
-
+          {/* Image dots */}
           {allImages.length > 1 && (
-            <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1 transition-opacity group-hover:opacity-0">
-              {allImages.map((_, idx) => (
+            <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 gap-1">
+              {allImages.slice(0, 4).map((_, idx) => (
                 <span
                   key={idx}
-                  className={`h-1.5 w-1.5 rounded-full transition-colors ${idx === currentImageIndex ? "bg-primary" : "bg-background/60"}`}
+                  className={`h-1 w-1 rounded-full transition-colors ${
+                    (isHovered ? 1 : 0) === idx
+                      ? "bg-foreground"
+                      : "bg-foreground/30"
+                  }`}
                 />
               ))}
             </div>
           )}
         </div>
 
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-foreground font-heading text-base">{product.name}</h3>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors" onClick={(e) => e.stopPropagation()}>
-                  <Info className="h-4 w-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent className="font-body text-xs max-w-[200px]">
-                <p className="font-semibold mb-1">Craft Story</p>
-                <p>{craftStory}</p>
-              </TooltipContent>
-            </Tooltip>
+        {/* Body */}
+        <div className="p-3 sm:p-4">
+
+          {/* Category */}
+          <p className="mb-1 font-body text-[11px] uppercase tracking-widest text-muted-foreground">
+            {product.category}
+          </p>
+
+          {/* Name */}
+          <h3 className="mb-2 truncate font-heading text-sm font-semibold text-foreground sm:text-base">
+            {product.name}
+          </h3>
+
+          {/* Stars */}
+          <div className="mb-3">
+            <StarRating rating={rating} count={reviewCount} />
           </div>
 
-          <div className="mt-1 flex items-center gap-1.5">
-            <div className="flex">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  className={`h-3 w-3 ${i < Math.floor(rating) ? "fill-saffron text-saffron" : "text-muted"}`}
-                />
-              ))}
-            </div>
-            <span className="text-xs text-muted-foreground font-body">({reviewCount})</span>
-          </div>
-
-          <p className="mt-1.5 text-sm text-muted-foreground line-clamp-1 font-body">{product.description}</p>
-
+          {/* Sizes */}
           {hasSizes && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mb-3 flex flex-wrap gap-1.5">
               {product.sizes!.map((size) => (
                 <button
                   key={size}
-                  onClick={(e) => { e.stopPropagation(); setSelectedSize(size); }}
-                  className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors font-body ${
+                  onClick={(e) => handleSizeClick(e, size)}
+                  className={`rounded border px-2 py-0.5 font-body text-[11px] font-medium transition-colors ${
                     selectedSize === size
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-background text-foreground hover:border-foreground/50"
                   }`}
                 >
                   {size}
@@ -179,22 +204,31 @@ const ProductCard = ({ product }: ProductCardProps) => {
             </div>
           )}
 
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-lg font-bold text-foreground font-heading">
-              ₹{product.price.toLocaleString()}
+          {/* Price + CTA */}
+          <div className="flex items-center justify-between gap-2">
+            <span className={`font-heading text-base font-semibold sm:text-lg ${
+              outOfStock ? "text-muted-foreground" : "text-foreground"
+            }`}>
+              ₹{product.price.toLocaleString("en-IN")}
             </span>
-            <Button
-              size="sm"
-              onClick={handleAddToCart}
-              disabled={outOfStock}
-              className="gap-1.5 rounded-full font-body md:hidden"
-            >
-              <ShoppingBag className="h-3.5 w-3.5" />
-              Add
-            </Button>
+
+            {outOfStock ? (
+              <span className="rounded-full border border-border bg-muted px-3 py-1 font-body text-xs text-muted-foreground">
+                Sold out
+              </span>
+            ) : (
+              <button
+                onClick={handleAddToCart}
+                className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 font-body text-xs font-medium text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
+              >
+                <ShoppingBag className="h-3 w-3" />
+                Add to cart
+              </button>
+            )}
           </div>
-        </CardContent>
-      </Card>
+
+        </div>
+      </div>
     </motion.div>
   );
 };
