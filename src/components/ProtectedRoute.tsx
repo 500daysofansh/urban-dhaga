@@ -2,7 +2,8 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 // ✅ Add your admin email here — only this email can access /admin
-const ADMIN_EMAILS = ["support@urbandhage.in"];
+const ADMIN_EMAILS = ["support@urbandhage.in",
+                     "urbandhagee@gmail.com"];
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
