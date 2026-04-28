@@ -1,4 +1,5 @@
 export const JEWELRY_CATEGORIES = ["Jewellery", "Jewelry", "Accessories"];
+
 export const AVAILABLE_SIZES = ["XS", "S", "M", "L", "XL", "XXL"];
 
 export interface Product {
