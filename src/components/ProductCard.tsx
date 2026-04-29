@@ -5,6 +5,7 @@ import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, Heart } from "lucide-react";
 import { motion } from "framer-motion";
+import { cardImage } from "@/lib/cloudinary";
 
 interface ProductCardProps {
   product: Product;
@@ -37,6 +38,10 @@ const StarRating = ({ rating, count }: { rating: number; count: number }) => (
   </div>
 );
 
+// Only animate cards on desktop — animating 20+ cards on budget Android phones
+// causes scroll jank and delays perceived load time significantly.
+const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
 const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const { addToCart } = useCart();
   const { toast } = useToast();
@@ -44,7 +49,6 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
-  const [imagesPreloaded, setImagesPreloaded] = useState(false);
 
   const allImages = product.images?.length > 0 ? product.images : [product.image];
   const isJewelry = JEWELRY_CATEGORIES.some(
@@ -66,19 +70,23 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     reviewCount: 20 + (product.id.charCodeAt(0) * 7) % 180,
   }), [product.id]);
 
-  const displayImage = isHovered && allImages.length > 1
-    ? allImages[1]
-    : allImages[0];
+  // Optimized URLs — served at 400px wide, auto-format (WebP on phones), compressed
+  const optimizedImages = useMemo(
+    () => allImages.map((src) => cardImage(src)),
+    [allImages]
+  );
+
+  const displayImage = isHovered && optimizedImages.length > 1
+    ? optimizedImages[1]
+    : optimizedImages[0];
 
   const handleMouseEnter = () => {
     setIsHovered(true);
-    // Preload all product images on first hover so detail page loads instantly
-    if (!imagesPreloaded && allImages.length > 1) {
-      allImages.slice(1).forEach((src) => {
-        const img = new Image();
-        img.src = src;
-      });
-      setImagesPreloaded(true);
+    // Preload hover image via JS — no hidden <img> tags in the DOM
+    // (hidden img tags still create network requests and slow down mobile)
+    if (allImages.length > 1) {
+      const img = new Image();
+      img.src = optimizedImages[1];
     }
   };
 
@@ -111,8 +119,9 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      // Disable enter animation on mobile to prevent scroll jank
+      initial={isMobile ? false : { opacity: 0, y: 16 }}
+      whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.35 }}
     >
@@ -127,25 +136,15 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
           <img
             src={displayImage}
             alt={product.name}
+            // Priority images (first 4) load eagerly — rest are lazy
             loading={priority ? "eager" : "lazy"}
-            decoding="async"
+            decoding={priority ? "sync" : "async"}
+            // Helps browser allocate the right amount of bandwidth per image
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             className={`h-full w-full object-cover transition-transform duration-500 ${
               isHovered ? "scale-105" : "scale-100"
             } ${outOfStock ? "opacity-70" : ""}`}
           />
-
-          {/* Hidden preload images — forces browser to cache all images */}
-          {allImages.slice(1).map((src, idx) => (
-            <img
-              key={idx}
-              src={src}
-              alt=""
-              aria-hidden="true"
-              loading="lazy"
-              decoding="async"
-              className="hidden"
-            />
-          ))}
 
           {/* Badge top-left */}
           <span className={`absolute left-2.5 top-2.5 rounded-full border px-2.5 py-0.5 font-body text-[11px] font-medium ${badgeClass}`}>
