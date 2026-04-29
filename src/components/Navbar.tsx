@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingBag, Menu, X, User, LogOut, Search, ChevronDown } from "lucide-react";
+import { ShoppingBag, Menu, X, User, LogOut, Search, ChevronDown, Package } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,6 @@ const Navbar = () => {
             : "bg-background/95 backdrop-blur-sm border-transparent"
         }`}
       >
-        {/* CHANGED: Replaced max-w-7xl with w-full and updated the side padding (px-4 md:px-8 lg:px-12) to push elements to the corners */}
         <div className="mx-auto flex h-16 w-full items-center justify-between px-4 md:px-8 lg:px-12">
           
           {/* Logo */}
@@ -122,11 +121,19 @@ const Navbar = () => {
                 )}
               </Button>
             </Link>
+
             {user ? (
               <div className="flex items-center gap-2 ml-1">
                 <span className="text-xs text-muted-foreground truncate max-w-[120px] font-body">
                   {user.email}
                 </span>
+                <Link
+                  to="/my-orders"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors font-body"
+                >
+                  <Package className="h-3.5 w-3.5" />
+                  My Orders
+                </Link>
                 <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
                   <LogOut className="h-4 w-4" />
                 </Button>
@@ -170,12 +177,22 @@ const Navbar = () => {
                 </button>
               ))}
               {user ? (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground truncate font-body">{user.email}</span>
-                  <Button variant="ghost" size="sm" onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
-                    <LogOut className="mr-1 h-4 w-4" /> Logout
-                  </Button>
-                </div>
+                <>
+                  <Link
+                    to="/my-orders"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground font-body"
+                  >
+                    <Package className="h-4 w-4" />
+                    My Orders
+                  </Link>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground truncate font-body">{user.email}</span>
+                    <Button variant="ghost" size="sm" onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
+                      <LogOut className="mr-1 h-4 w-4" /> Logout
+                    </Button>
+                  </div>
+                </>
               ) : (
                 <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="text-sm font-medium text-primary font-body">
                   Login / Sign Up
