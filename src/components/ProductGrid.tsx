@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { useState, useEffect, useCallback } from "react";
+import { collection, getDocs, query, limit, startAfter, orderBy, QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Product } from "@/types/product";
 import ProductCard from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
+
+const PAGE_SIZE = 12; // Load 12 at a time — manageable for mobile networks
 
 const CATEGORY_ORDER = [
   "Sarees", "Kurtas", "Lehengas", "Dupattas",
@@ -12,9 +15,10 @@ const CATEGORY_ORDER = [
 ];
 
 const SkeletonCard = () => (
-  <div className="overflow-hidden rounded-lg border-0 shadow-sm">
+  <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
     <div className="aspect-[4/5] animate-pulse bg-muted" />
     <div className="p-4 space-y-3">
+      <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
       <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
       <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
       <div className="h-5 w-1/3 animate-pulse rounded bg-muted" />
@@ -27,40 +31,86 @@ const ProductGrid = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const snapshot = await getDocs(collection(db, "products"));
-        const items = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Product[];
+  // Initial load — first page only
+  const fetchInitial = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = query(
+        collection(db, "products"),
+        orderBy("name"),
+        limit(PAGE_SIZE)
+      );
+      const snapshot = await getDocs(q);
+      const items = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Product[];
 
-        setProducts(items);
+      setProducts(items);
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] ?? null);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
 
-        // Sort categories in defined order, unknown ones go at the end
-        const uniqueCats = [...new Set(items.map((p) => p.category))];
+      // Build category list from what we have — more may come on "load more"
+      // but this gives the filter pills something to show immediately
+      const uniqueCats = [...new Set(items.map((p) => p.category))];
+      const sorted = [
+        ...CATEGORY_ORDER.filter((c) => uniqueCats.includes(c)),
+        ...uniqueCats.filter((c) => !CATEGORY_ORDER.includes(c)),
+      ];
+      setCategories(sorted);
+    } catch (error) {
+      console.error("Failed to fetch products:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load next page
+  const fetchMore = useCallback(async () => {
+    if (!lastDoc || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const q = query(
+        collection(db, "products"),
+        orderBy("name"),
+        startAfter(lastDoc),
+        limit(PAGE_SIZE)
+      );
+      const snapshot = await getDocs(q);
+      const newItems = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Product[];
+
+      setProducts((prev) => {
+        const merged = [...prev, ...newItems];
+
+        // Update category list with any new categories in the new batch
+        const uniqueCats = [...new Set(merged.map((p) => p.category))];
         const sorted = [
           ...CATEGORY_ORDER.filter((c) => uniqueCats.includes(c)),
           ...uniqueCats.filter((c) => !CATEGORY_ORDER.includes(c)),
         ];
         setCategories(sorted);
 
-        // Preload first 4 product images for faster above-the-fold rendering
-        items.slice(0, 4).forEach((product) => {
-          const img = new Image();
-          img.src = product.image;
-        });
-      } catch (error) {
-        console.error("Failed to fetch products:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+        return merged;
+      });
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] ?? null);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error("Failed to load more products:", error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [lastDoc, loadingMore]);
 
-    fetchProducts();
-  }, []);
+  useEffect(() => {
+    fetchInitial();
+  }, [fetchInitial]);
 
   // Listen for category filter events from Navbar/Footer
   useEffect(() => {
@@ -78,6 +128,7 @@ const ProductGrid = () => {
     ? products.filter((p) => p.category === activeCategory)
     : products;
 
+  // ── Loading skeleton ──────────────────────────────────────────────
   if (loading) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
@@ -92,7 +143,7 @@ const ProductGrid = () => {
           ))}
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
+          {Array.from({ length: PAGE_SIZE }).map((_, i) => (
             <SkeletonCard key={i} />
           ))}
         </div>
@@ -100,6 +151,7 @@ const ProductGrid = () => {
     );
   }
 
+  // ── Empty state ───────────────────────────────────────────────────
   if (products.length === 0) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 text-center">
@@ -109,6 +161,7 @@ const ProductGrid = () => {
     );
   }
 
+  // ── Main grid ─────────────────────────────────────────────────────
   return (
     <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
 
@@ -155,7 +208,8 @@ const ProductGrid = () => {
 
       {/* Product count */}
       <p className="mb-4 font-body text-sm text-muted-foreground">
-        {filtered.length} {filtered.length === 1 ? "product" : "products"}
+        {filtered.length}{hasMore && !activeCategory ? "+" : ""}{" "}
+        {filtered.length === 1 ? "product" : "products"}
         {activeCategory ? ` in ${activeCategory}` : ""}
       </p>
 
@@ -169,21 +223,52 @@ const ProductGrid = () => {
           </Button>
         </div>
       ) : (
-        <motion.div
-          key={activeCategory}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-          className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-        >
-          {filtered.map((product, index) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              priority={index < 4}
-            />
-          ))}
-        </motion.div>
+        <>
+          <motion.div
+            key={activeCategory}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          >
+            {filtered.map((product, index) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                priority={index < 4}
+              />
+            ))}
+          </motion.div>
+
+          {/* Load more — only show when not filtered and more pages exist */}
+          {!activeCategory && hasMore && (
+            <div className="mt-12 flex justify-center">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={fetchMore}
+                disabled={loadingMore}
+                className="rounded-full font-body px-8"
+              >
+                {loadingMore ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load more"
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* End of catalogue message */}
+          {!activeCategory && !hasMore && products.length > PAGE_SIZE && (
+            <p className="mt-10 text-center font-body text-sm text-muted-foreground">
+              You've seen all {products.length} products
+            </p>
+          )}
+        </>
       )}
 
     </section>
