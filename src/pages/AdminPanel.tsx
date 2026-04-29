@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import OrdersPanel from "@/components/OrdersPanel";
 import {
   collection,
   getDocs,
@@ -643,13 +644,9 @@ const AdminPanel = () => {
           </>
         )}
 
-        {activeTab === "orders" && (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-24 text-center">
-            <PackageOpen className="mb-3 h-10 w-10 text-muted-foreground/40" />
-            <p className="font-heading text-base font-semibold text-foreground">Order management coming soon</p>
-            <p className="mt-1 font-body text-sm text-muted-foreground">Orders from Firestore will appear here.</p>
-          </div>
-        )}
+      {activeTab === "orders" && (
+  <OrdersPanel />
+)}
       </div>
     </div>
   );
