@@ -7,6 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { X, MapPin, Loader2 } from "lucide-react";
 import { ShippingAddress } from "@/types/order";
 import { sendOrderEmails } from "@/lib/email";
+import { db } from "@/lib/firebase";
+import { collection, addDoc } from "firebase/firestore";
 
 interface CheckoutModalProps {
   open: boolean;
@@ -70,13 +72,36 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         email: userEmail,
         contact: address.phone,
       },
-      notes: {
-        delivery_address: addressLine,
-      },
+      notes: { delivery_address: addressLine },
       theme: { color: "#7c3aed" },
       handler: async (response: any) => {
         setPaying(true);
+        const now = Date.now();
+
         try {
+          // ── Save order to Firestore ──────────────────────────────────
+          await addDoc(collection(db, "orders"), {
+            customerName:  address.fullName,
+            customerEmail: userEmail,
+            paymentId:     response.razorpay_payment_id,
+            amount:        totalPrice,
+            address,
+            items: items.map((i) => ({
+              name:          i.name,
+              price:         i.price,
+              cartQuantity:  i.cartQuantity,
+              selectedSize:  i.selectedSize || null,
+              image:         i.image || null,
+            })),
+            status:    "order_placed",
+            createdAt: now,
+            updatedAt: now,
+            statusHistory: [
+              { status: "order_placed", timestamp: now },
+            ],
+          });
+
+          // ── Send confirmation emails ─────────────────────────────────
           await sendOrderEmails({
             customerName:  address.fullName,
             customerEmail: userEmail,
@@ -86,21 +111,22 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
             itemsSummary,
           });
         } catch (err) {
-          console.error("Email send failed:", err);
-          // Don't block order confirmation if email fails
+          console.error("Post-payment error:", err);
+          // Never block the customer from seeing confirmation
         }
+
         clearCart();
         onClose();
         navigate("/order-confirmation", {
           state: {
             paymentId: response.razorpay_payment_id,
-            amount: totalPrice,
+            amount:    totalPrice,
             address,
             items: items.map((i) => ({
-              name: i.name,
-              cartQuantity: i.cartQuantity,
-              price: i.price,
-              selectedSize: i.selectedSize,
+              name:          i.name,
+              cartQuantity:  i.cartQuantity,
+              price:         i.price,
+              selectedSize:  i.selectedSize,
             })),
           },
         });
