@@ -14,6 +14,7 @@ import AdminPanel from "./pages/AdminPanel.tsx";
 import OrderConfirmation from "./pages/OrderConfirmation.tsx";
 import ProductDetail from "./pages/ProductDetail.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import MyOrders from "./pages/MyOrders.tsx";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,7 @@ const App = () => (
               <Route path="/cart" element={<Cart />} />
               <Route path="/login" element={<UserLogin />} />
               <Route path="/order-confirmation" element={<OrderConfirmation />} />
+              <Route path="/my-orders" element={<MyOrders />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route
                 path="/admin"
