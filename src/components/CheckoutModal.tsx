@@ -8,7 +8,7 @@ import { X, MapPin, Loader2 } from "lucide-react";
 import { ShippingAddress } from "@/types/order";
 import { sendOrderEmails } from "@/lib/email";
 import { db } from "@/lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc } from "firebase/firestore";
 
 interface CheckoutModalProps {
   open: boolean;
@@ -17,12 +17,12 @@ interface CheckoutModalProps {
 }
 
 const INDIAN_STATES = [
-  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
-  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
-  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
-  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
-  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
-  "Delhi", "Jammu & Kashmir", "Ladakh", "Puducherry",
+  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
+  "Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka",
+  "Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram",
+  "Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu",
+  "Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
+  "Delhi","Jammu & Kashmir","Ladakh","Puducherry",
 ];
 
 const empty: ShippingAddress = {
@@ -67,11 +67,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       currency: "INR",
       name: "Urban Dhage",
       description: `Order of ${items.length} item(s)`,
-      prefill: {
-        name: address.fullName,
-        email: userEmail,
-        contact: address.phone,
-      },
+      prefill: { name: address.fullName, email: userEmail, contact: address.phone },
       notes: { delivery_address: addressLine },
       theme: { color: "#7c3aed" },
       handler: async (response: any) => {
@@ -79,29 +75,30 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         const now = Date.now();
 
         try {
-          // ── Save order to Firestore ──────────────────────────────────
-          await addDoc(collection(db, "orders"), {
+          // Save order to Firestore
+          const orderRef = await addDoc(collection(db, "orders"), {
             customerName:  address.fullName,
             customerEmail: userEmail,
             paymentId:     response.razorpay_payment_id,
             amount:        totalPrice,
             address,
             items: items.map((i) => ({
-              name:          i.name,
-              price:         i.price,
-              cartQuantity:  i.cartQuantity,
-              selectedSize:  i.selectedSize || null,
-              image:         i.image || null,
+              name:         i.name,
+              price:        i.price,
+              cartQuantity: i.cartQuantity,
+              selectedSize: i.selectedSize || null,
+              image:        i.image || null,
             })),
-            status:    "order_placed",
-            createdAt: now,
-            updatedAt: now,
-            statusHistory: [
-              { status: "order_placed", timestamp: now },
-            ],
+            status:        "order_placed",
+            createdAt:     now,
+            updatedAt:     now,
+            statusHistory: [{ status: "order_placed", timestamp: now }],
           });
 
-          // ── Send confirmation emails ─────────────────────────────────
+          // Write orderId back onto the document
+          await updateDoc(orderRef, { orderId: orderRef.id });
+
+          // Send confirmation emails
           await sendOrderEmails({
             customerName:  address.fullName,
             customerEmail: userEmail,
@@ -112,7 +109,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
           });
         } catch (err) {
           console.error("Post-payment error:", err);
-          // Never block the customer from seeing confirmation
         }
 
         clearCart();
@@ -123,17 +119,13 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
             amount:    totalPrice,
             address,
             items: items.map((i) => ({
-              name:          i.name,
-              cartQuantity:  i.cartQuantity,
-              price:         i.price,
-              selectedSize:  i.selectedSize,
+              name: i.name, cartQuantity: i.cartQuantity,
+              price: i.price, selectedSize: i.selectedSize,
             })),
           },
         });
       },
-      modal: {
-        ondismiss: () => toast({ title: "Payment cancelled" }),
-      },
+      modal: { ondismiss: () => toast({ title: "Payment cancelled" }) },
     };
 
     const rzp = new (window as any).Razorpay(options);
@@ -223,11 +215,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         </div>
 
         <div className="px-6 py-4 border-t border-border">
-          <Button
-            className="w-full rounded-full text-base py-5 gap-2"
-            onClick={handlePay}
-            disabled={paying}
-          >
+          <Button className="w-full rounded-full text-base py-5 gap-2" onClick={handlePay} disabled={paying}>
             {paying
               ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
               : `Pay ₹${totalPrice.toLocaleString("en-IN")} →`
