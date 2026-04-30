@@ -12,6 +12,14 @@ const QUICK_LINKS = [
   { name: "Accessories", category: "Accessories" },
 ];
 
+const CUSTOMER_CARE_LINKS = [
+  { name: "Shipping Info", to: "/shipping" },
+  { name: "Returns & Exchanges", to: "/returns" },
+  { name: "Size Guide", to: "/size-guide" },
+  { name: "My Orders", to: "/my-orders" },
+  { name: "Contact Us", href: "https://wa.me/918419856013" },
+];
+
 const Footer = () => {
   const [email, setEmail] = useState("");
 
@@ -66,11 +74,26 @@ const Footer = () => {
           <div>
             <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-background/80 font-body">Customer Care</h4>
             <ul className="space-y-2.5 text-sm text-background/60 font-body">
-              <li><Link to="/cart" className="hover:text-saffron transition-colors">Shipping Info</Link></li>
-              <li><Link to="/cart" className="hover:text-saffron transition-colors">Returns & Exchanges</Link></li>
-              <li><button onClick={() => handleCategoryClick("New Arrivals")} className="hover:text-saffron transition-colors">Size Guide</button></li>
-              <li><a href="https://wa.me/918419856013" target="_blank" rel="noopener noreferrer" className="hover:text-saffron transition-colors">Contact Us</a></li>
-              <li><button onClick={() => toast.info("FAQ section coming soon!")} className="hover:text-saffron transition-colors">FAQs</button></li>
+              {CUSTOMER_CARE_LINKS.map((link) =>
+                link.href ? (
+                  <li key={link.name}>
+                    <a
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-saffron transition-colors"
+                    >
+                      {link.name}
+                    </a>
+                  </li>
+                ) : (
+                  <li key={link.name}>
+                    <Link to={link.to!} className="hover:text-saffron transition-colors">
+                      {link.name}
+                    </Link>
+                  </li>
+                )
+              )}
             </ul>
           </div>
 
