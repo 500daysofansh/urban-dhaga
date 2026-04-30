@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,11 +7,10 @@ import { Order, OrderStatus, OrderItem } from "@/types/order";
 import { STATUS_META } from "@/lib/email";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { Package, ChevronDown, ChevronUp, ShoppingBag } from "lucide-react";
+import { ShoppingBag, ChevronDown, ChevronUp, MapPin, CreditCard, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
 
-const STATUS_ORDER: OrderStatus[] = [
+const CUSTOMER_STEPS: OrderStatus[] = [
   "order_placed",
   "order_processed",
   "order_shipped",
@@ -19,142 +18,180 @@ const STATUS_ORDER: OrderStatus[] = [
   "order_delivered",
 ];
 
-function formatDate(ts: number) {
-  return new Date(ts).toLocaleString("en-IN", {
-    day: "2-digit", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
+const STEP_ICONS: Record<OrderStatus, string> = {
+  order_placed:     "🛍️",
+  order_processed:  "⚙️",
+  order_shipped:    "📦",
+  out_for_delivery: "🚚",
+  order_delivered:  "✅",
+  meesho_ordered:   "✅",
+};
+
+const STEP_LABELS: Record<OrderStatus, string> = {
+  order_placed:     "Placed",
+  order_processed:  "Processing",
+  order_shipped:    "Shipped",
+  out_for_delivery: "Out for Delivery",
+  order_delivered:  "Delivered",
+  meesho_ordered:   "Confirmed",
+};
+
+function getCustomerStepIndex(status: OrderStatus): number {
+  const mapped = status === "meesho_ordered" ? "order_processed" : status;
+  return CUSTOMER_STEPS.indexOf(mapped);
 }
 
-function StatusBadge({ status }: { status: OrderStatus }) {
-  const meta = STATUS_META[status];
-  const colors: Record<OrderStatus, string> = {
-    order_placed:      "bg-gray-100 text-gray-700",
-    meesho_ordered:    "bg-blue-50 text-blue-700",
-    order_processed:   "bg-yellow-50 text-yellow-700",
-    order_shipped:     "bg-orange-50 text-orange-700",
-    out_for_delivery:  "bg-purple-50 text-purple-700",
-    order_delivered:   "bg-green-50 text-green-700",
-  };
-  return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${colors[status]}`}>
-      {meta.emoji} {meta.label}
-    </span>
-  );
+function formatDate(ts: number) {
+  return new Date(ts).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
 function OrderCard({ order }: { order: Order }) {
   const [expanded, setExpanded] = useState(false);
-  const currentIdx = STATUS_ORDER.indexOf(order.status);
+  const currentIdx = getCustomerStepIndex(order.status);
+  const isDelivered = order.status === "order_delivered";
+  const visibleHistory = order.statusHistory.filter((h) => h.status !== "meesho_ordered");
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div className={`rounded-2xl overflow-hidden transition-all duration-300 ${isDelivered ? "border border-green-200 bg-green-50/30" : "border border-border bg-card"}`}>
 
-      {/* Header */}
-      <div
-        className="flex items-start justify-between px-5 py-4 cursor-pointer hover:bg-muted/30 transition-colors"
-        onClick={() => setExpanded((p) => !p)}
-      >
-        <div className="space-y-1.5 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground font-mono">#{order.paymentId.slice(-8).toUpperCase()}</span>
-            <StatusBadge status={order.status} />
-          </div>
-          <p className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</p>
-          <p className="text-xs text-muted-foreground">{order.items.length} item{order.items.length > 1 ? "s" : ""}</p>
-        </div>
-        <div className="flex items-center gap-3 ml-4 shrink-0">
-          <span className="font-bold text-sm">₹{order.amount.toLocaleString("en-IN")}</span>
-          {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+      {/* Top strip */}
+      <div className={`px-5 py-3 flex items-center justify-between text-xs font-body ${isDelivered ? "bg-green-100/50" : "bg-muted/40"}`}>
+        <span className="font-mono text-muted-foreground tracking-wider">#{order.paymentId.slice(-10).toUpperCase()}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-muted-foreground">{formatDate(order.createdAt)}</span>
+          <span className="font-semibold text-foreground text-sm">₹{order.amount.toLocaleString("en-IN")}</span>
         </div>
       </div>
 
-      {/* Progress bar — always visible */}
-      <div className="px-5 pb-4">
-        <div className="flex items-center">
-          {STATUS_ORDER.map((s, idx) => {
-            const done = idx <= currentIdx;
-            const isLast = idx === STATUS_ORDER.length - 1;
-            return (
-              <div key={s} className="flex items-center flex-1 min-w-0">
-                <div
-                  className={`w-2.5 h-2.5 rounded-full shrink-0 transition-all duration-500
-                    ${done ? "bg-primary scale-110" : "bg-muted-foreground/25"}`}
-                />
-                {!isLast && (
-                  <div className={`h-0.5 flex-1 transition-all duration-500 ${idx < currentIdx ? "bg-primary" : "bg-muted-foreground/20"}`} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex justify-between mt-1.5">
-          {STATUS_ORDER.map((s, idx) => (
-            <span
-              key={s}
-              className={`text-[9px] text-center leading-tight transition-colors
-                ${idx <= currentIdx ? "text-primary font-semibold" : "text-muted-foreground"}`}
-              style={{ width: `${100 / STATUS_ORDER.length}%` }}
-            >
-              {STATUS_META[s].emoji}
-            </span>
-          ))}
-        </div>
-        {/* Current status message */}
-        <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-          {STATUS_META[order.status].message}
-        </p>
-      </div>
-
-      {/* Expanded details */}
-      {expanded && (
-        <div className="border-t border-border px-5 py-4 space-y-4">
-
-          {/* Items */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Items Ordered</p>
-            <div className="space-y-1.5">
-              {order.items.map((item: OrderItem, i: number) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <span className="text-foreground">
-                    {item.name}{item.selectedSize ? ` (${item.selectedSize})` : ""} × {item.cartQuantity}
-                  </span>
-                  <span className="text-muted-foreground">₹{(item.price * item.cartQuantity).toLocaleString("en-IN")}</span>
-                </div>
-              ))}
-              <div className="border-t border-border pt-1.5 flex justify-between text-sm font-semibold">
-                <span>Total</span>
-                <span>₹{order.amount.toLocaleString("en-IN")}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Delivery address */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Delivery Address</p>
-            <p className="text-sm text-foreground leading-relaxed">
-              {order.address.fullName}, {order.address.phone}<br />
-              {order.address.street}, {order.address.city}<br />
-              {order.address.state} — {order.address.pincode}
+      {/* Items + tracker */}
+      <div className="px-5 py-4 cursor-pointer" onClick={() => setExpanded((p) => !p)}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground line-clamp-2 font-body leading-relaxed">
+              {order.items.map((i) => `${i.name}${i.selectedSize ? ` (${i.selectedSize})` : ""}`).join(", ")}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 font-body">
+              {order.items.reduce((sum, i) => sum + i.cartQuantity, 0)} item{order.items.reduce((sum, i) => sum + i.cartQuantity, 0) > 1 ? "s" : ""} · Free shipping
             </p>
           </div>
+          <button className="shrink-0 rounded-full p-1 hover:bg-muted transition-colors">
+            {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </button>
+        </div>
 
-          {/* Status history */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Status History</p>
-            <div className="space-y-1.5">
-              {[...order.statusHistory].reverse().map((h, i) => (
-                <div key={i} className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5">
-                    <span>{STATUS_META[h.status as OrderStatus]?.emoji}</span>
-                    <span className="text-foreground">{STATUS_META[h.status as OrderStatus]?.label}</span>
-                  </span>
-                  <span className="text-muted-foreground">{formatDate(h.timestamp)}</span>
-                </div>
-              ))}
+        {/* Progress tracker */}
+        <div className="mt-5">
+          <div className="relative">
+            <div className="absolute top-4 left-4 right-4 h-0.5 bg-border" />
+            <div
+              className="absolute top-4 left-4 h-0.5 bg-primary transition-all duration-700"
+              style={{ width: currentIdx <= 0 ? "0%" : `${(currentIdx / (CUSTOMER_STEPS.length - 1)) * 88}%` }}
+            />
+            <div className="relative flex justify-between">
+              {CUSTOMER_STEPS.map((step, idx) => {
+                const done = idx <= currentIdx;
+                const active = idx === currentIdx;
+                return (
+                  <div key={step} className="flex flex-col items-center gap-2" style={{ width: "20%" }}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all duration-500 relative z-10 ${done ? active ? "bg-primary text-primary-foreground shadow-md scale-110" : "bg-primary/15 text-primary" : "bg-background border-2 border-border text-muted-foreground/40"}`}>
+                      {done ? STEP_ICONS[step] : <span className="text-[10px] font-bold font-body">{idx + 1}</span>}
+                    </div>
+                    <span className={`text-center font-body leading-tight transition-colors ${done ? active ? "text-primary font-semibold" : "text-foreground/70" : "text-muted-foreground/50"}`} style={{ fontSize: "9px" }}>
+                      {STEP_LABELS[step]}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
+          {/* Status message */}
+          <div className={`mt-4 rounded-xl px-4 py-3 text-xs font-body leading-relaxed ${isDelivered ? "bg-green-100/60 text-green-800" : "bg-primary/5 text-foreground/80"}`}>
+            {STATUS_META[order.status]?.message || STATUS_META["order_placed"].message}
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded */}
+      {expanded && (
+        <div className="border-t border-border/60 divide-y divide-border/60">
+
+          {/* Items */}
+          <div className="px-5 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3 font-body">Order Items</p>
+            <div className="space-y-2.5">
+              {order.items.map((item: OrderItem, i: number) => (
+                <div key={i} className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-body text-foreground truncate">{item.name}</p>
+                      <p className="text-xs text-muted-foreground font-body">{item.selectedSize ? `Size: ${item.selectedSize} · ` : ""}Qty: {item.cartQuantity}</p>
+                    </div>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground shrink-0 font-body">₹{(item.price * item.cartQuantity).toLocaleString("en-IN")}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 pt-3 border-t border-border/60 flex justify-between items-center">
+              <span className="text-xs text-muted-foreground font-body">Total paid</span>
+              <span className="font-bold text-foreground font-body">₹{order.amount.toLocaleString("en-IN")}</span>
+            </div>
+          </div>
+
+          {/* Address */}
+          <div className="px-5 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3 font-body">Delivery Address</p>
+            <div className="flex items-start gap-2.5">
+              <MapPin className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <p className="text-sm font-body text-foreground leading-relaxed">
+                {order.address.fullName}<br />
+                {order.address.street}, {order.address.city}<br />
+                {order.address.state} — {order.address.pincode}<br />
+                <span className="text-muted-foreground">{order.address.phone}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Timeline */}
+          {visibleHistory.length > 0 && (
+            <div className="px-5 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3 font-body">Status Timeline</p>
+              <div className="space-y-2.5">
+                {[...visibleHistory].reverse().map((h, i) => {
+                  const meta = STATUS_META[h.status as OrderStatus];
+                  if (!meta) return null;
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-base w-6 text-center">{meta.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground font-body">{meta.label}</p>
+                        <p className="text-[11px] text-muted-foreground font-body">{formatDate(h.timestamp)} at {formatTime(h.timestamp)}</p>
+                      </div>
+                      {i === 0 && (
+                        <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full font-body">Latest</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Payment ID */}
+          <div className="px-5 py-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-[11px] text-muted-foreground font-body">Payment ID:</span>
+              <span className="text-[11px] font-mono text-muted-foreground">{order.paymentId}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -166,51 +203,82 @@ export default function MyOrders() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"all" | "active" | "delivered">("all");
 
   useEffect(() => {
     if (!user) { navigate("/login"); return; }
-
-    const q = query(
-      collection(db, "orders"),
-      where("customerEmail", "==", user.email),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
+    const q = query(collection(db, "orders"), where("customerEmail", "==", user.email), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (snap) => {
       setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order)));
       setLoading(false);
     });
-
-    return unsub;
   }, [user]);
 
-  return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar />
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-8 pb-24 md:pb-8">
-        <h1 className="font-heading text-2xl font-bold mb-6">My Orders</h1>
+  const filtered = orders.filter((o) => {
+    if (filter === "active") return o.status !== "order_delivered";
+    if (filter === "delivered") return o.status === "order_delivered";
+    return true;
+  });
 
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2].map((i) => (
-              <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
-            ))}
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <Navbar />
+      <main className="flex-1 pb-24 md:pb-12">
+        <div className="border-b border-border bg-card/50">
+          <div className="max-w-2xl mx-auto px-4 py-8">
+            <h1 className="font-heading text-3xl font-bold text-foreground">My Orders</h1>
+            <p className="text-sm text-muted-foreground font-body mt-1">Track and manage your Urban Dhage purchases</p>
           </div>
-        ) : orders.length === 0 ? (
-          <div className="text-center py-20">
-            <ShoppingBag className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-30" />
-            <p className="text-muted-foreground mb-4">You haven't placed any orders yet.</p>
-            <Link to="/">
-              <Button>Start Shopping</Button>
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {orders.map((order) => (
-              <OrderCard key={order.id} order={order} />
-            ))}
-          </div>
-        )}
+        </div>
+
+        <div className="max-w-2xl mx-auto px-4 py-6">
+          {!loading && orders.length > 0 && (
+            <div className="flex gap-2 mb-6 p-1 bg-muted/50 rounded-full w-fit">
+              {(["all", "active", "delivered"] as const).map((f) => (
+                <button key={f} onClick={() => setFilter(f)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-semibold font-body transition-all capitalize ${filter === f ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  {f === "all" ? `All (${orders.length})` : f === "active" ? `Active (${orders.filter(o => o.status !== "order_delivered").length})` : `Delivered (${orders.filter(o => o.status === "order_delivered").length})`}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {loading && (
+            <div className="space-y-4">
+              {[1, 2].map((i) => (
+                <div key={i} className="rounded-2xl border border-border overflow-hidden">
+                  <div className="h-10 bg-muted/60 animate-pulse" />
+                  <div className="p-5 space-y-3">
+                    <div className="h-4 bg-muted animate-pulse rounded-lg w-3/4" />
+                    <div className="h-3 bg-muted animate-pulse rounded-lg w-1/3" />
+                    <div className="h-16 bg-muted/50 animate-pulse rounded-xl mt-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loading && orders.length === 0 && (
+            <div className="text-center py-20">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <ShoppingBag className="h-8 w-8 text-primary" />
+              </div>
+              <h2 className="font-heading text-xl font-semibold text-foreground mb-2">No orders yet</h2>
+              <p className="text-sm text-muted-foreground font-body mb-6">Your orders will appear here once you make a purchase.</p>
+              <Link to="/"><Button className="rounded-full px-6">Start Shopping</Button></Link>
+            </div>
+          )}
+
+          {!loading && filtered.length > 0 && (
+            <div className="space-y-4">
+              {filtered.map((order) => <OrderCard key={order.id} order={order} />)}
+            </div>
+          )}
+
+          {!loading && orders.length > 0 && filtered.length === 0 && (
+            <div className="text-center py-12"><p className="text-sm text-muted-foreground font-body">No {filter} orders found.</p></div>
+          )}
+        </div>
       </main>
       <Footer />
     </div>
