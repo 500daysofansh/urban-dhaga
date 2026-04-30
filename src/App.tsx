@@ -19,7 +19,6 @@ import SizeGuide from "./pages/SizeGuide.tsx";
 import Returns from "./pages/Returns.tsx";
 import ShippingInfo from "./pages/ShippingInfo.tsx";
 
-
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -37,6 +36,9 @@ const App = () => (
               <Route path="/login" element={<UserLogin />} />
               <Route path="/order-confirmation" element={<OrderConfirmation />} />
               <Route path="/my-orders" element={<MyOrders />} />
+              <Route path="/size-guide" element={<SizeGuide />} />
+              <Route path="/returns" element={<Returns />} />
+              <Route path="/shipping" element={<ShippingInfo />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route
                 path="/admin"
@@ -46,11 +48,8 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              {/* Catch-all MUST be last */}
               <Route path="*" element={<NotFound />} />
-              <Route path="/size-guide" element={<SizeGuide />} />
-              <Route path="/returns" element={<Returns />} />
-              <Route path="/shipping" element={<ShippingInfo />} />
             </Routes>
           </CartProvider>
         </AuthProvider>
