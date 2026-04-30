@@ -13,7 +13,6 @@ import { Link } from "react-router-dom";
 
 const STATUS_ORDER: OrderStatus[] = [
   "order_placed",
-  "meesho_ordered",
   "order_processed",
   "order_shipped",
   "out_for_delivery",
