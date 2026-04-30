@@ -11,7 +11,7 @@ const STATUS_ORDER: OrderStatus[] = [
 ];
 
 const STATUS_BUTTONS: { status: OrderStatus; color: string }[] = [
-  { status: "meesho_ordered",   color: "bg-blue-500 hover:bg-blue-600" },
+  { status: "meesho_ordered",   color: "bg-blue-500 hover:bg-blue-600" }, // ← admin only
   { status: "order_processed",  color: "bg-yellow-500 hover:bg-yellow-600" },
   { status: "order_shipped",    color: "bg-orange-500 hover:bg-orange-600" },
   { status: "out_for_delivery", color: "bg-purple-500 hover:bg-purple-600" },
