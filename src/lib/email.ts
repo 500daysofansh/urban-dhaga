@@ -5,9 +5,8 @@ const PUBLIC_KEY = "a5MUx20kzvERzjdBr";
 const CUST_TPL   = "template_fqu1999";
 const ADMIN_TPL  = "template_bv8hdi4";
 
-// Create this new template in EmailJS dashboard
-// Template ID for order status updates sent to customer
-const STATUS_TPL = "template_status_update"; // ← create this in EmailJS
+// Create this template in your EmailJS dashboard
+const STATUS_TPL = "template_status_update";
 
 export interface OrderEmailData {
   customerName:  string;
@@ -63,36 +62,32 @@ export async function sendOrderEmails(data: OrderEmailData) {
   ]);
 }
 
-// Human-readable labels and messages for each status
-export const STATUS_META: Record<OrderStatus, { label: string; emoji: string; message: string }> = {
+// Human-readable labels and messages for each status.
+// emoji field removed — UI now uses SVG icons via STATUS_SVG in MyOrders.tsx.
+// Email templates receive status_label as plain text.
+export const STATUS_META: Record<OrderStatus, { label: string; message: string }> = {
   order_placed: {
     label:   "Order Placed",
-    emoji:   "🛍️",
     message: "Your order has been placed successfully! We have received your payment and will start processing it shortly.",
   },
   meesho_ordered: {
-    label:   "Order Placed on Meesho",
-    emoji:   "✅",
-    message: "Great news! Your order has been placed with our supplier on Meesho and is being prepared for dispatch.",
+    label:   "Order Confirmed",
+    message: "Great news! Your order has been placed with our supplier and is being prepared for dispatch.",
   },
   order_processed: {
     label:   "Order Processed",
-    emoji:   "⚙️",
     message: "Your order has been processed and is being prepared for shipment. We'll notify you as soon as it ships!",
   },
   order_shipped: {
     label:   "Order Shipped",
-    emoji:   "📦",
     message: "Your order is on its way! It has been handed over to our delivery partner and will reach you soon.",
   },
   out_for_delivery: {
     label:   "Out for Delivery",
-    emoji:   "🚚",
-    message: "Exciting! Your order is out for delivery today. Please keep your phone handy for the delivery executive.",
+    message: "Your order is out for delivery today. Please keep your phone handy for the delivery executive.",
   },
   order_delivered: {
     label:   "Order Delivered",
-    emoji:   "🎉",
     message: "Your order has been delivered successfully! We hope you love your purchase. Thank you for shopping with Urban Dhage!",
   },
 };
@@ -104,7 +99,7 @@ export async function sendStatusEmail(data: StatusEmailData) {
     to_email:       data.customerEmail,
     order_id:       data.orderId,
     payment_id:     data.paymentId,
-    status_label:   `${meta.emoji} ${meta.label}`,
+    status_label:   meta.label,
     status_message: meta.message,
     note:           data.note || "",
   });
