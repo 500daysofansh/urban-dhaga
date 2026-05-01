@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,12 +22,42 @@ import ShippingInfo from "./pages/ShippingInfo.tsx";
 
 const queryClient = new QueryClient();
 
+// ─── Google Analytics ─────────────────────────────────────────────────────────
+// Fires a page_view on every React Router navigation.
+// Without this, GA only counts the very first page load —
+// all client-side route changes are invisible in the dashboard.
+
+declare global {
+  interface Window {
+    gtag?: (...args: unknown[]) => void;
+  }
+}
+
+const GA_ID = import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined;
+
+function Analytics() {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!window.gtag || !GA_ID) return;
+    window.gtag("config", GA_ID, {
+      page_path: location.pathname + location.search,
+    });
+  }, [location]);
+
+  return null;
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        {/* Analytics must be inside BrowserRouter to use useLocation */}
+        <Analytics />
         <AuthProvider>
           <CartProvider>
             <Routes>
