@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Product, JEWELRY_CATEGORIES } from "@/types/product";
 import { useCart } from "@/contexts/CartContext";
@@ -11,16 +11,6 @@ interface ProductCardProps {
   product: Product;
   priority?: boolean;
 }
-
-const CRAFT_STORIES: Record<string, string> = {
-  "Sarees": "Hand-woven by master weavers from Varanasi",
-  "Kurtas": "Block printed by artisans from Jaipur",
-  "Dupattas": "Bandhani tie-dye craft from Gujarat",
-  "Accessories": "Handcrafted by artisan families from Rajasthan",
-  "Lehengas": "Chikankari embroidery from Lucknow",
-  "Jewellery": "Kundan work by goldsmiths from Bikaner",
-  "Western": "Contemporary styles with Indian craftsmanship",
-};
 
 const StarRating = ({ rating, count }: { rating: number; count: number }) => (
   <div className="flex items-center gap-1">
@@ -38,17 +28,23 @@ const StarRating = ({ rating, count }: { rating: number; count: number }) => (
   </div>
 );
 
-// Only animate cards on desktop — animating 20+ cards on budget Android phones
-// causes scroll jank and delays perceived load time significantly.
+// Detect mobile once at module level — avoids repeated checks per render
 const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+// Auto-advance interval on mobile (ms)
+const SLIDE_INTERVAL = 2200;
 
 const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const { addToCart } = useCart();
   const { toast } = useToast();
   const navigate = useNavigate();
+
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [wishlisted, setWishlisted] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const allImages = product.images?.length > 0 ? product.images : [product.image];
   const isJewelry = JEWELRY_CATEGORIES.some(
@@ -57,6 +53,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const hasSizes = !isJewelry && product.sizes && product.sizes.length > 0;
   const outOfStock = !product.inStock || product.quantity <= 0;
   const isLimited = !outOfStock && product.quantity <= 5;
+  const hasMultiple = allImages.length > 1;
 
   const badgeLabel = outOfStock ? "Out of stock" : isLimited ? "Limited" : "Handcrafted";
   const badgeClass = outOfStock
@@ -70,25 +67,72 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     reviewCount: 20 + (product.id.charCodeAt(0) * 7) % 180,
   }), [product.id]);
 
-  // Optimized URLs — served at 400px wide, auto-format (WebP on phones), compressed
   const optimizedImages = useMemo(
     () => allImages.map((src) => cardImage(src)),
     [allImages]
   );
 
-  const displayImage = isHovered && optimizedImages.length > 1
-    ? optimizedImages[1]
-    : optimizedImages[0];
+  // ── Mobile: auto-slideshow using IntersectionObserver ──────────────────────
+  // Only starts when the card is visible on screen, stops when scrolled away.
+  // This avoids wasting resources on cards out of viewport.
+  useEffect(() => {
+    if (!isMobile || !hasMultiple) return;
 
+    const card = cardRef.current;
+    if (!card) return;
+
+    const startSlide = () => {
+      if (intervalRef.current) return; // already running
+      intervalRef.current = setInterval(() => {
+        setActiveIdx((prev) => (prev + 1) % allImages.length);
+      }, SLIDE_INTERVAL);
+    };
+
+    const stopSlide = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          startSlide();
+        } else {
+          stopSlide();
+          setActiveIdx(0); // reset to first image when out of view
+        }
+      },
+      { threshold: 0.4 } // card must be 40% visible to start sliding
+    );
+
+    observer.observe(card);
+
+    return () => {
+      observer.disconnect();
+      stopSlide();
+    };
+  }, [isMobile, hasMultiple, allImages.length]);
+
+  // ── Desktop: hover image swap ──────────────────────────────────────────────
   const handleMouseEnter = () => {
+    if (isMobile) return;
     setIsHovered(true);
-    // Preload hover image via JS — no hidden <img> tags in the DOM
-    // (hidden img tags still create network requests and slow down mobile)
-    if (allImages.length > 1) {
+    if (hasMultiple) {
       const img = new Image();
       img.src = optimizedImages[1];
     }
   };
+
+  // Current image to display
+  // Mobile: driven by activeIdx (auto-slideshow)
+  // Desktop: driven by isHovered (swap to image[1] on hover)
+  const displayImage = isMobile
+    ? optimizedImages[activeIdx] ?? optimizedImages[0]
+    : isHovered && hasMultiple
+    ? optimizedImages[1]
+    : optimizedImages[0];
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -107,9 +151,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const handleWishlist = (e: React.MouseEvent) => {
     e.stopPropagation();
     setWishlisted((prev) => !prev);
-    toast({
-      title: wishlisted ? "Removed from wishlist" : "Added to wishlist",
-    });
+    toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist" });
   };
 
   const handleSizeClick = (e: React.MouseEvent, size: string) => {
@@ -119,60 +161,56 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   return (
     <motion.div
-      // Disable enter animation on mobile to prevent scroll jank
       initial={isMobile ? false : { opacity: 0, y: 16 }}
       whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.35 }}
     >
       <div
+        ref={cardRef}
         className="group cursor-pointer overflow-hidden rounded-xl border border-border bg-card transition-colors duration-200 hover:border-border/80"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsHovered(false)}
         onClick={() => navigate(`/product/${product.id}`)}
       >
-        {/* Image */}
+        {/* ── Image ── */}
         <div className="relative aspect-[4/5] overflow-hidden bg-muted">
           <img
             src={displayImage}
             alt={product.name}
-            // Priority images (first 4) load eagerly — rest are lazy
             loading={priority ? "eager" : "lazy"}
             decoding={priority ? "sync" : "async"}
-            // Helps browser allocate the right amount of bandwidth per image
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className={`h-full w-full object-cover transition-transform duration-500 ${
-              isHovered ? "scale-105" : "scale-100"
+            className={`h-full w-full object-cover transition-all duration-700 ${
+              isHovered && !isMobile ? "scale-105" : "scale-100"
             } ${outOfStock ? "opacity-70" : ""}`}
           />
 
-          {/* Badge top-left */}
+          {/* Badge */}
           <span className={`absolute left-2.5 top-2.5 rounded-full border px-2.5 py-0.5 font-body text-[11px] font-medium ${badgeClass}`}>
             {badgeLabel}
           </span>
 
-          {/* Wishlist top-right */}
+          {/* Wishlist */}
           <button
             onClick={handleWishlist}
             className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur-sm transition-colors hover:bg-background"
           >
-            <Heart
-              className={`h-3.5 w-3.5 transition-colors ${
-                wishlisted ? "fill-accent text-accent" : "text-muted-foreground"
-              }`}
-            />
+            <Heart className={`h-3.5 w-3.5 transition-colors ${wishlisted ? "fill-accent text-accent" : "text-muted-foreground"}`} />
           </button>
 
-          {/* Image dots */}
-          {allImages.length > 1 && (
-            <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 gap-1">
+          {/* Dots — show on mobile always (slideshow indicator), on desktop only on hover */}
+          {hasMultiple && (
+            <div className={`absolute bottom-2.5 left-1/2 flex -translate-x-1/2 gap-1 transition-opacity duration-300 ${
+              isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}>
               {allImages.slice(0, 4).map((_, idx) => (
                 <span
                   key={idx}
-                  className={`h-1 w-1 rounded-full transition-colors ${
-                    (isHovered ? 1 : 0) === idx
-                      ? "bg-foreground"
-                      : "bg-foreground/30"
+                  className={`rounded-full transition-all duration-300 ${
+                    activeIdx === idx || (!isMobile && isHovered && idx === 1) || (!isMobile && !isHovered && idx === 0)
+                      ? "h-1.5 w-4 bg-white"        // active dot: wide pill
+                      : "h-1.5 w-1.5 bg-white/50"   // inactive dot: small circle
                   }`}
                 />
               ))}
@@ -180,25 +218,18 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
           )}
         </div>
 
-        {/* Body */}
+        {/* ── Body ── */}
         <div className="p-3 sm:p-4">
-
-          {/* Category */}
           <p className="mb-1 font-body text-[11px] uppercase tracking-widest text-muted-foreground">
             {product.category}
           </p>
-
-          {/* Name */}
           <h3 className="mb-2 truncate font-heading text-sm font-semibold text-foreground sm:text-base">
             {product.name}
           </h3>
-
-          {/* Stars */}
           <div className="mb-3">
             <StarRating rating={rating} count={reviewCount} />
           </div>
 
-          {/* Sizes */}
           {hasSizes && (
             <div className="mb-3 flex flex-wrap gap-1.5">
               {product.sizes!.map((size) => (
@@ -217,14 +248,10 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             </div>
           )}
 
-          {/* Price + CTA */}
           <div className="flex items-center justify-between gap-2">
-            <span className={`font-heading text-base font-semibold sm:text-lg ${
-              outOfStock ? "text-muted-foreground" : "text-foreground"
-            }`}>
+            <span className={`font-heading text-base font-semibold sm:text-lg ${outOfStock ? "text-muted-foreground" : "text-foreground"}`}>
               ₹{product.price.toLocaleString("en-IN")}
             </span>
-
             {outOfStock ? (
               <span className="rounded-full border border-border bg-muted px-3 py-1 font-body text-xs text-muted-foreground">
                 Sold out
@@ -239,7 +266,6 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
               </button>
             )}
           </div>
-
         </div>
       </div>
     </motion.div>
