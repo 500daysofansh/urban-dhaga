@@ -77,16 +77,19 @@ const ProductDetail = () => {
 
   // ── Touch / swipe state ──────────────────────────────────────────────────
   const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    const delta = touchStartX.current - e.changedTouches[0].clientX;
-    // Only trigger if swipe is at least 40px — avoids accidental triggers on taps
-    if (Math.abs(delta) > 40) {
-      delta > 0 ? goNext() : goPrev();
+    const deltaX = touchStartX.current - e.changedTouches[0].clientX;
+    const deltaY = touchStartY.current - e.changedTouches[0].clientY;
+    // Only trigger if horizontal swipe > 40px and more horizontal than vertical
+    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      deltaX > 0 ? goNext() : goPrev();
     }
   };
 
@@ -217,9 +220,10 @@ const ProductDetail = () => {
             {/* ── Image panel ── */}
             <div className="space-y-3">
 
-              {/* Main image — swipeable on mobile, portrait ratio (4:5) */}
+              {/* Main image — swipeable on mobile, portrait ratio (4:5)
+                  Added `group` so desktop hover shows the arrow buttons. */}
               <div
-                className="relative overflow-hidden rounded-2xl bg-muted aspect-[4/5]"
+                className="group relative overflow-hidden rounded-2xl bg-muted aspect-[4/5]"
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
               >
@@ -230,7 +234,7 @@ const ProductDetail = () => {
                   eager={true}
                 />
 
-                {/* Prev / Next arrows */}
+                {/* Prev / Next arrows — always visible on mobile, hover-only on desktop */}
                 {allImages.length > 1 && (
                   <>
                     <button
@@ -265,9 +269,12 @@ const ProductDetail = () => {
               </div>
 
               {/* ── Thumbnails ─────────────────────────────────────────────────
-                  FIX: use ring-2 instead of border-2 so the outline sits
-                  *outside* the box model — no size shift, no irregular borders.
-                  Removed scale-105 which was nudging neighbours and looked off.
+                  FIX: `overflow-hidden` on the same element as `ring` causes
+                  the ring to be clipped by border-radius, making the outline
+                  look irregular/broken. Solution: outer <button> holds only
+                  the ring + focus styles (no overflow-hidden), inner <span>
+                  handles the clipping. This way the ring renders fully outside
+                  the box and stays perfectly uniform.
               ──────────────────────────────────────────────────────────────── */}
               {allImages.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -275,19 +282,23 @@ const ProductDetail = () => {
                     <button
                       key={idx}
                       onClick={() => setSelectedImage(idx)}
-                      className={`relative aspect-[4/5] h-20 shrink-0 overflow-hidden rounded-xl transition-all duration-200 ring-2 ring-offset-1 ${
+                      className={`relative aspect-[4/5] h-20 shrink-0 rounded-xl transition-all duration-200 ring-2 ring-offset-2 focus:outline-none ${
                         idx === selectedImage
                           ? "ring-primary opacity-100"
                           : "ring-transparent opacity-60 hover:opacity-90 hover:ring-border"
                       }`}
                     >
-                      <img
-                        src={optimizeImage(img, 160)}
-                        alt={`View ${idx + 1}`}
-                        loading="lazy"
-                        decoding="async"
-                        className="h-full w-full object-cover"
-                      />
+                      {/* Inner span clips the image to rounded corners independently
+                          of the outer ring — this is the key fix for irregular outlines */}
+                      <span className="block h-full w-full overflow-hidden rounded-[10px]">
+                        <img
+                          src={optimizeImage(img, 160)}
+                          alt={`View ${idx + 1}`}
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-cover"
+                        />
+                      </span>
                     </button>
                   ))}
                 </div>
