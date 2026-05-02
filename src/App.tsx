@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { HelmetProvider } from "react-helmet-async";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -33,51 +34,55 @@ const GA_ID = import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined;
 
 function Analytics() {
   const location = useLocation();
+
   useEffect(() => {
     if (!window.gtag || !GA_ID) return;
     window.gtag("config", GA_ID, {
       page_path: location.pathname + location.search,
     });
   }, [location]);
+
   return null;
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <ScrollToTop />
-        <Analytics />
-        <AuthProvider>
-          <CartProvider>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/product/:id" element={<ProductDetail />} />
-              <Route path="/cart" element={<Cart />} />
-              <Route path="/login" element={<UserLogin />} />
-              <Route path="/order-confirmation" element={<OrderConfirmation />} />
-              <Route path="/my-orders" element={<MyOrders />} />
-              <Route path="/size-guide" element={<SizeGuide />} />
-              <Route path="/returns" element={<Returns />} />
-              <Route path="/shipping" element={<ShippingInfo />} />
-              <Route path="/admin/login" element={<AdminLogin />} />
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute>
-                    <AdminPanel />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </CartProvider>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <HelmetProvider>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <ScrollToTop />
+          <Analytics />
+          <AuthProvider>
+            <CartProvider>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/product/:id" element={<ProductDetail />} />
+                <Route path="/cart" element={<Cart />} />
+                <Route path="/login" element={<UserLogin />} />
+                <Route path="/order-confirmation" element={<OrderConfirmation />} />
+                <Route path="/my-orders" element={<MyOrders />} />
+                <Route path="/size-guide" element={<SizeGuide />} />
+                <Route path="/returns" element={<Returns />} />
+                <Route path="/shipping" element={<ShippingInfo />} />
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute>
+                      <AdminPanel />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </CartProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </HelmetProvider>
 );
 
 export default App;
