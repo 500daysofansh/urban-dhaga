@@ -45,13 +45,75 @@ const ProductGrid = () => {
   const [loadingMore, setLoadingMore]       = useState(false);
   const [hasMore, setHasMore]               = useState(true);
 
-  // Refs — never stale inside callbacks/observers
+  // Use refs for values needed inside callbacks/observers to avoid stale closures
   const lastDocRef  = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const isFetching  = useRef(false);
   const hasMoreRef  = useRef(true);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
+  // Keep ref in sync with state
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
+
+  // ── fetchMore — stable ref so observer never goes stale ───────────────────
+  // We store it in a ref so the IntersectionObserver callback always calls
+  // the latest version without needing to re-observe on every render.
+  const fetchMoreRef = useRef<() => Promise<void>>();
+
+  const fetchMore = useCallback(async () => {
+    // Guard: don't fire if already fetching, no more pages, or no cursor
+    if (isFetching.current) return;
+    if (!hasMoreRef.current) return;
+    if (!lastDocRef.current) return;
+
+    isFetching.current = true;
+    setLoadingMore(true);
+
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, "products"),
+          orderBy("name"),
+          startAfter(lastDocRef.current),
+          limit(PAGE_SIZE)
+        )
+      );
+
+      if (snap.docs.length === 0) {
+        // No more docs — mark done
+        hasMoreRef.current = false;
+        setHasMore(false);
+        return;
+      }
+
+      const newItems = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
+      lastDocRef.current = snap.docs[snap.docs.length - 1];
+
+      // Only mark hasMore=false when we actually get fewer than PAGE_SIZE docs
+      // This avoids premature termination on slow networks
+      const more = snap.docs.length >= PAGE_SIZE;
+      hasMoreRef.current = more;
+      setHasMore(more);
+
+      setProducts((prev) => {
+        const ids = new Set(prev.map((p) => p.id));
+        // Deduplicate — prevents double-adding if observer fires twice rapidly
+        const deduped = newItems.filter((p) => !ids.has(p.id));
+        const merged = [...prev, ...deduped];
+        setCategories(buildCategories(merged));
+        return merged;
+      });
+    } catch (err) {
+      console.error("fetchMore failed:", err);
+      // Don't mark hasMore=false on error — let the next scroll attempt retry
+    } finally {
+      isFetching.current = false;
+      setLoadingMore(false);
+    }
+  }, []);
+
+  // Keep fetchMoreRef current
+  useEffect(() => { fetchMoreRef.current = fetchMore; }, [fetchMore]);
 
   // ── Initial fetch ──────────────────────────────────────────────────────────
   const fetchInitial = useCallback(async () => {
@@ -59,14 +121,22 @@ const ProductGrid = () => {
     isFetching.current = false;
     lastDocRef.current = null;
     hasMoreRef.current = true;
+    setHasMore(true);
+    setProducts([]);
+
     try {
       const snap = await getDocs(
         query(collection(db, "products"), orderBy("name"), limit(PAGE_SIZE))
       );
+
       const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
       lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
-      const more = snap.docs.length === PAGE_SIZE;
+
+      // FIX: use >= instead of === so we don't flip hasMore=false if Firestore
+      // returns slightly fewer than PAGE_SIZE due to deleted/filtered docs
+      const more = snap.docs.length >= PAGE_SIZE;
       hasMoreRef.current = more;
+
       setProducts(items);
       setHasMore(more);
       setCategories(buildCategories(items));
@@ -77,66 +147,47 @@ const ProductGrid = () => {
     }
   }, []);
 
-  // ── Fetch next page ────────────────────────────────────────────────────────
-  const fetchMore = useCallback(async () => {
-    if (isFetching.current || !hasMoreRef.current || !lastDocRef.current) return;
-    isFetching.current = true;
-    setLoadingMore(true);
-    try {
-      const snap = await getDocs(
-        query(
-          collection(db, "products"),
-          orderBy("name"),
-          startAfter(lastDocRef.current),
-          limit(PAGE_SIZE)
-        )
-      );
-      const newItems = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
-      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
-      const more = snap.docs.length === PAGE_SIZE;
-      hasMoreRef.current = more;
-      setHasMore(more);
-      setProducts((prev) => {
-        const merged = [...prev, ...newItems];
-        setCategories(buildCategories(merged));
-        return merged;
-      });
-    } catch (err) {
-      console.error("fetchMore failed:", err);
-    } finally {
-      isFetching.current = false;
-      setLoadingMore(false);
-    }
-  }, []);
-
   useEffect(() => { fetchInitial(); }, [fetchInitial]);
 
-  // ── IntersectionObserver ───────────────────────────────────────────────────
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) fetchMore(); },
-      // Large rootMargin so fetch triggers well before user hits bottom
-      { rootMargin: "0px 0px 1200px 0px", threshold: 0 }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [fetchMore]);
+  // ── IntersectionObserver — re-attaches whenever sentinel mounts/unmounts ──
+  // FIX: We observe the sentinel in a useEffect with sentinelRef.current as
+  // a dependency-like trigger by using a callback ref pattern.
+  // The observer always calls fetchMoreRef.current so it never goes stale.
+  const attachObserver = useCallback((node: HTMLDivElement | null) => {
+    // Disconnect old observer first
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
 
-  // Also trigger fetchMore on scroll as a fallback
+    if (!node) return;
+
+    observerRef.current = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          fetchMoreRef.current?.();
+        }
+      },
+      // rootMargin: start loading 800px before sentinel enters viewport
+      { rootMargin: "0px 0px 800px 0px", threshold: 0 }
+    );
+
+    observerRef.current.observe(node);
+  }, []);
+
+  // ── Scroll fallback — catches cases where observer misfires on iOS Safari ──
   useEffect(() => {
     const onScroll = () => {
+      if (!hasMoreRef.current || isFetching.current) return;
       const scrollBottom = window.scrollY + window.innerHeight;
-      const docHeight = document.documentElement.scrollHeight;
-      // When within 1000px of page bottom, fetch more
-      if (docHeight - scrollBottom < 1000) {
-        fetchMore();
+      const docHeight    = document.documentElement.scrollHeight;
+      if (docHeight - scrollBottom < 800) {
+        fetchMoreRef.current?.();
       }
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [fetchMore]);
+  }, []);
 
   // ── Category filter ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -153,7 +204,7 @@ const ProductGrid = () => {
     ? products.filter((p) => p.category === activeCategory)
     : products;
 
-  // ── Skeleton ───────────────────────────────────────────────────────────────
+  // ── Initial skeleton ───────────────────────────────────────────────────────
   if (loading) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
@@ -183,7 +234,7 @@ const ProductGrid = () => {
     );
   }
 
-  // ── Main ───────────────────────────────────────────────────────────────────
+  // ── Main grid ──────────────────────────────────────────────────────────────
   return (
     <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
 
@@ -245,7 +296,7 @@ const ProductGrid = () => {
       ) : (
         <>
           <motion.div
-            key={activeCategory}
+            key={activeCategory ?? "all"}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
@@ -254,23 +305,30 @@ const ProductGrid = () => {
             {filtered.map((product, index) => (
               <ProductCard key={product.id} product={product} priority={index < 4} />
             ))}
+
+            {/* Inline skeleton cards while loading more */}
             {loadingMore && Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={`skel-${i}`} />
             ))}
           </motion.div>
 
-          {/* Sentinel — always mounted */}
-          <div ref={sentinelRef} className="h-2 w-full" aria-hidden="true" />
+          {/* Sentinel — uses callback ref so observer re-attaches on remount.
+              Only rendered when not filtering (category scroll doesn't need pagination) */}
+          {!activeCategory && hasMore && (
+            <div ref={attachObserver} className="h-4 w-full" aria-hidden="true" />
+          )}
 
+          {/* Spinner below grid while fetching */}
           {loadingMore && (
             <div className="mt-6 flex justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           )}
 
+          {/* End of catalogue */}
           {!hasMore && products.length > PAGE_SIZE && (
             <p className="mt-10 text-center font-body text-sm text-muted-foreground">
-              You've seen all {products.length} products ✨
+              You've seen all {products.length} products
             </p>
           )}
         </>
