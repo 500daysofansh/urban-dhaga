@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/contexts/CartContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import ScrollToTop from "@/components/ScrollToTop";
 import Index from "./pages/Index.tsx";
 import Cart from "./pages/Cart.tsx";
 import UserLogin from "./pages/UserLogin.tsx";
@@ -22,11 +23,6 @@ import ShippingInfo from "./pages/ShippingInfo.tsx";
 
 const queryClient = new QueryClient();
 
-// ─── Google Analytics ─────────────────────────────────────────────────────────
-// Fires a page_view on every React Router navigation.
-// Without this, GA only counts the very first page load —
-// all client-side route changes are invisible in the dashboard.
-
 declare global {
   interface Window {
     gtag?: (...args: unknown[]) => void;
@@ -37,18 +33,14 @@ const GA_ID = import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined;
 
 function Analytics() {
   const location = useLocation();
-
   useEffect(() => {
     if (!window.gtag || !GA_ID) return;
     window.gtag("config", GA_ID, {
       page_path: location.pathname + location.search,
     });
   }, [location]);
-
   return null;
 }
-
-// ─── App ──────────────────────────────────────────────────────────────────────
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -56,7 +48,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        {/* Analytics must be inside BrowserRouter to use useLocation */}
+        <ScrollToTop />
         <Analytics />
         <AuthProvider>
           <CartProvider>
@@ -79,7 +71,6 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
-              {/* Catch-all MUST be last */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </CartProvider>
