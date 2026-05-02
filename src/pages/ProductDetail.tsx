@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -31,9 +31,9 @@ const CloudImage = ({
   const [loaded, setLoaded] = useState(false);
 
   // Tiny 20px-wide placeholder — loads in ~200 bytes, appears instantly
-  const tinyUrl  = optimizeImage(src, 20);
+  const tinyUrl = optimizeImage(src, 20);
   // Full display-size URL
-  const fullUrl  = detailImage(src); // 800px wide, f_auto, q_auto:good
+  const fullUrl = detailImage(src); // 800px wide, f_auto, q_auto:good
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
@@ -69,11 +69,26 @@ const ProductDetail = () => {
   const { addToCart } = useCart();
   const { toast } = useToast();
 
-  const [product, setProduct]       = useState<Product | null>(null);
-  const [loading, setLoading]       = useState(true);
+  const [product, setProduct]             = useState<Product | null>(null);
+  const [loading, setLoading]             = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedSize, setSelectedSize]   = useState<string | undefined>();
-  const [quantity, setQuantity]     = useState(1);
+  const [quantity, setQuantity]           = useState(1);
+
+  // ── Touch / swipe state ──────────────────────────────────────────────────
+  const touchStartX = useRef<number>(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const delta = touchStartX.current - e.changedTouches[0].clientX;
+    // Only trigger if swipe is at least 40px — avoids accidental triggers on taps
+    if (Math.abs(delta) > 40) {
+      delta > 0 ? goNext() : goPrev();
+    }
+  };
 
   useEffect(() => {
     const fetch = async () => {
@@ -138,7 +153,7 @@ const ProductDetail = () => {
                   <div className="h-4 w-4/6 animate-pulse rounded bg-muted" />
                 </div>
                 <div className="flex gap-2">
-                  {["S","M","L","XL"].map((s) => (
+                  {["S", "M", "L", "XL"].map((s) => (
                     <div key={s} className="h-10 w-14 animate-pulse rounded-full bg-muted" />
                   ))}
                 </div>
@@ -202,16 +217,20 @@ const ProductDetail = () => {
             {/* ── Image panel ── */}
             <div className="space-y-3">
 
-              {/* Main image — portrait ratio (4:5) matches real clothing photos */}
-              <div className="relative overflow-hidden rounded-2xl bg-muted aspect-[4/5]">
+              {/* Main image — swipeable on mobile, portrait ratio (4:5) */}
+              <div
+                className="relative overflow-hidden rounded-2xl bg-muted aspect-[4/5]"
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+              >
                 <CloudImage
                   src={allImages[selectedImage]}
                   alt={product.name}
                   className="h-full w-full"
-                  eager={true}  // first image loads eagerly — no lazy penalty
+                  eager={true}
                 />
 
-                {/* Prev / Next arrows — visible on mobile tap or desktop hover */}
+                {/* Prev / Next arrows */}
                 {allImages.length > 1 && (
                   <>
                     <button
@@ -245,20 +264,23 @@ const ProductDetail = () => {
                 )}
               </div>
 
-              {/* Thumbnails — lazy loaded, optimised at 160px */}
+              {/* ── Thumbnails ─────────────────────────────────────────────────
+                  FIX: use ring-2 instead of border-2 so the outline sits
+                  *outside* the box model — no size shift, no irregular borders.
+                  Removed scale-105 which was nudging neighbours and looked off.
+              ──────────────────────────────────────────────────────────────── */}
               {allImages.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                   {allImages.map((img, idx) => (
                     <button
                       key={idx}
                       onClick={() => setSelectedImage(idx)}
-                      className={`relative aspect-[4/5] h-20 shrink-0 overflow-hidden rounded-xl border-2 transition-all duration-200 ${
+                      className={`relative aspect-[4/5] h-20 shrink-0 overflow-hidden rounded-xl transition-all duration-200 ring-2 ring-offset-1 ${
                         idx === selectedImage
-                          ? "border-primary shadow-md scale-105"
-                          : "border-transparent opacity-70 hover:opacity-100 hover:border-border"
+                          ? "ring-primary opacity-100"
+                          : "ring-transparent opacity-60 hover:opacity-90 hover:ring-border"
                       }`}
                     >
-                      {/* Thumbnails at 160px — tiny file, loads fast */}
                       <img
                         src={optimizeImage(img, 160)}
                         alt={`View ${idx + 1}`}
