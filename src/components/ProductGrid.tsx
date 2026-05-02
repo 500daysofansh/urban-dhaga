@@ -216,7 +216,7 @@ const ProductGrid = () => {
       )}
 
       <p className="mb-4 font-body text-sm text-muted-foreground">
-        {filtered.length}{hasMore && !activeCategory ? "+" : ""}{" "}
+        {products.length}{hasMore && !activeCategory ? "+" : ""}{" "}
         {filtered.length === 1 ? "product" : "products"}
         {activeCategory ? ` in ${activeCategory}` : ""}
       </p>
