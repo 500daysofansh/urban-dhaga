@@ -17,7 +17,6 @@ const CATEGORY_ORDER = [
   "Western", "Accessories", "Jewellery",
 ];
 
-// ── Skeleton card ─────────────────────────────────────────────────────────────
 const SkeletonCard = () => (
   <div className="overflow-hidden rounded-xl border border-border bg-card">
     <div className="aspect-[4/5] animate-pulse bg-muted" />
@@ -30,28 +29,19 @@ const SkeletonCard = () => (
   </div>
 );
 
-// ── Inline loader shown at the bottom while fetching next page ────────────────
-const InlineLoader = () => (
-  <div className="col-span-2 flex flex-col items-center justify-center gap-3 py-10 sm:col-span-2 lg:col-span-3 xl:col-span-4">
-    <Loader2 className="h-7 w-7 animate-spin text-primary" />
-    <p className="font-body text-sm text-muted-foreground">Loading more products…</p>
-  </div>
-);
-
-// ── ProductGrid ───────────────────────────────────────────────────────────────
 const ProductGrid = () => {
-  const [products, setProducts]       = useState<Product[]>([]);
-  const [categories, setCategories]   = useState<string[]>([]);
+  const [products, setProducts]             = useState<Product[]>([]);
+  const [categories, setCategories]         = useState<string[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore]         = useState(true);
-  const [lastDoc, setLastDoc]         = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [loading, setLoading]               = useState(true);
+  const [loadingMore, setLoadingMore]       = useState(false);
+  const [hasMore, setHasMore]               = useState(true);
 
-  // Sentinel div at the bottom of the grid — IntersectionObserver watches this
+  // Keep lastDoc in a ref so fetchMore always reads the latest value
+  // without needing to be in the dependency array (avoids stale closures)
+  const lastDocRef  = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const isFetching  = useRef(false); // prevents double-firing
   const sentinelRef = useRef<HTMLDivElement>(null);
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
 
   const buildCategories = (items: Product[]) => {
     const unique = [...new Set(items.map((p) => p.category))];
@@ -69,71 +59,73 @@ const ProductGrid = () => {
         query(collection(db, "products"), orderBy("name"), limit(PAGE_SIZE))
       );
       const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
+      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
       setProducts(items);
-      setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
       setHasMore(snap.docs.length === PAGE_SIZE);
       setCategories(buildCategories(items));
     } catch (err) {
-      console.error("Failed to fetch products:", err);
+      console.error("fetchInitial failed:", err);
     } finally {
       setLoading(false);
     }
   }, []);
 
   // ── Load next page ─────────────────────────────────────────────────────────
+  // Uses refs instead of state for guard checks — no stale closure issues
   const fetchMore = useCallback(async () => {
-    if (!lastDoc || loadingMore || !hasMore) return;
+    if (isFetching.current || !lastDocRef.current) return;
+    isFetching.current = true;
     setLoadingMore(true);
     try {
       const snap = await getDocs(
         query(
           collection(db, "products"),
           orderBy("name"),
-          startAfter(lastDoc),
+          startAfter(lastDocRef.current),
           limit(PAGE_SIZE)
         )
       );
       const newItems = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
+
+      // Update lastDoc ref BEFORE setState so next observer fire is correct
+      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+      const noMore = snap.docs.length < PAGE_SIZE;
+
       setProducts((prev) => {
         const merged = [...prev, ...newItems];
         setCategories(buildCategories(merged));
         return merged;
       });
-      setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
-      setHasMore(snap.docs.length === PAGE_SIZE);
+      setHasMore(!noMore);
     } catch (err) {
-      console.error("Failed to load more:", err);
+      console.error("fetchMore failed:", err);
     } finally {
+      isFetching.current = false;
       setLoadingMore(false);
     }
-  }, [lastDoc, loadingMore, hasMore]);
+  }, []); // no deps — reads everything from refs
 
   useEffect(() => { fetchInitial(); }, [fetchInitial]);
 
-  // ── IntersectionObserver — fires fetchMore when sentinel enters viewport ───
+  // ── IntersectionObserver ───────────────────────────────────────────────────
+  // Re-attaches whenever hasMore or loading changes so it stops when done
   useEffect(() => {
+    if (!hasMore || loading) return;
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // When the sentinel div (invisible, at bottom of grid) becomes visible,
-        // and we're not already loading, trigger the next page fetch.
-        if (entry.isIntersecting && !loadingMore && hasMore && !loading) {
-          fetchMore();
-        }
+        if (entry.isIntersecting) fetchMore();
       },
-      {
-        rootMargin: "300px", // start loading 300px before the sentinel is visible
-        threshold: 0,
-      }
+      { rootMargin: "400px", threshold: 0 }
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [fetchMore, loadingMore, hasMore, loading]);
+  }, [hasMore, loading, fetchMore]);
 
-  // ── Category filter event from Navbar/Footer ───────────────────────────────
+  // ── Category filter event ──────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const cat = (e as CustomEvent).detail as string;
@@ -148,7 +140,7 @@ const ProductGrid = () => {
     ? products.filter((p) => p.category === activeCategory)
     : products;
 
-  // ── Initial skeleton ───────────────────────────────────────────────────────
+  // ── Skeleton ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
@@ -169,17 +161,16 @@ const ProductGrid = () => {
     );
   }
 
-  // ── Empty catalogue ────────────────────────────────────────────────────────
   if (products.length === 0) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:px-8">
-        <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">Our Collection</h2>
+        <h2 className="font-heading text-2xl font-bold sm:text-3xl">Our Collection</h2>
         <p className="mt-4 font-body text-muted-foreground">No products available yet. Check back soon!</p>
       </section>
     );
   }
 
-  // ── Main grid ──────────────────────────────────────────────────────────────
+  // ── Main ───────────────────────────────────────────────────────────────────
   return (
     <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
 
@@ -224,17 +215,15 @@ const ProductGrid = () => {
         </div>
       )}
 
-      {/* Count */}
       <p className="mb-4 font-body text-sm text-muted-foreground">
         {filtered.length}{hasMore && !activeCategory ? "+" : ""}{" "}
         {filtered.length === 1 ? "product" : "products"}
         {activeCategory ? ` in ${activeCategory}` : ""}
       </p>
 
-      {/* Grid */}
       {filtered.length === 0 ? (
         <div className="py-20 text-center">
-          <p className="font-heading text-lg font-semibold text-foreground">No products in this category yet</p>
+          <p className="font-heading text-lg font-semibold">No products in this category yet</p>
           <p className="mt-1 font-body text-sm text-muted-foreground">Check back soon or browse all products</p>
           <Button className="mt-4 rounded-full" onClick={() => setActiveCategory(null)}>View All</Button>
         </div>
@@ -248,39 +237,34 @@ const ProductGrid = () => {
             className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4"
           >
             {filtered.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                priority={index < 4}
-              />
+              <ProductCard key={product.id} product={product} priority={index < 4} />
             ))}
 
-            {/* Inline loading skeletons — appear inside the grid seamlessly */}
-            {loadingMore && (
-              <>
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
-              </>
-            )}
+            {/* Skeleton cards appear inline while next page loads */}
+            {loadingMore && Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={`skel-${i}`} />
+            ))}
           </motion.div>
 
-          {/* Sentinel — invisible div that IntersectionObserver watches.
-              When this enters the viewport, the next page fetch is triggered. */}
+          {/* Sentinel — IntersectionObserver target, invisible */}
           {!activeCategory && hasMore && (
-            <div ref={sentinelRef} className="h-4 w-full" aria-hidden="true" />
+            <div ref={sentinelRef} className="h-2 w-full" aria-hidden="true" />
           )}
 
-          {/* End of catalogue */}
+          {/* Spinner below grid while fetching (backup visual) */}
+          {loadingMore && (
+            <div className="mt-6 flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          )}
+
           {!activeCategory && !hasMore && products.length > PAGE_SIZE && (
             <p className="mt-10 text-center font-body text-sm text-muted-foreground">
-              You've seen all {products.length} products
+              You've seen all {products.length} products ✨
             </p>
           )}
         </>
       )}
-
     </section>
   );
 };
