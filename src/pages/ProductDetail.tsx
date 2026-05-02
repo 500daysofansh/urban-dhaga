@@ -282,7 +282,7 @@ const ProductDetail = () => {
                     <button
                       key={idx}
                       onClick={() => setSelectedImage(idx)}
-                      className={`relative aspect-[4/5] h-20 shrink-0 rounded-xl transition-all duration-200 ring-2 ring-offset-2 focus:outline-none ${
+                      className={`relative aspect-[4/5] h-23 shrink-0 rounded-xl transition-all duration-200 ring-2 ring-offset-2 focus:outline-none ${
                         idx === selectedImage
                           ? "ring-primary opacity-100"
                           : "ring-transparent opacity-60 hover:opacity-90 hover:ring-border"
