@@ -45,11 +45,11 @@ const ProductGrid = () => {
   const [loadingMore, setLoadingMore]       = useState(false);
   const [hasMore, setHasMore]               = useState(true);
 
-  // ── Refs — avoid stale closures in IntersectionObserver ───────────────────
-  const lastDocRef   = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const isFetching   = useRef(false);
-  const hasMoreRef   = useRef(true);
-  const sentinelRef  = useRef<HTMLDivElement>(null);
+  // Refs — never go stale inside callbacks/observers
+  const lastDocRef  = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const isFetching  = useRef(false);
+  const hasMoreRef  = useRef(true);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Keep hasMoreRef in sync with state
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
@@ -59,6 +59,7 @@ const ProductGrid = () => {
     setLoading(true);
     isFetching.current = false;
     lastDocRef.current = null;
+    hasMoreRef.current = true;
     try {
       const snap = await getDocs(
         query(collection(db, "products"), orderBy("name"), limit(PAGE_SIZE))
@@ -78,7 +79,7 @@ const ProductGrid = () => {
   }, []);
 
   // ── Fetch next page ────────────────────────────────────────────────────────
-  // Reads from refs only — zero stale closure risk
+  // Zero deps — reads everything from refs, never stale
   const fetchMore = useCallback(async () => {
     if (isFetching.current || !hasMoreRef.current || !lastDocRef.current) return;
     isFetching.current = true;
@@ -93,7 +94,7 @@ const ProductGrid = () => {
         )
       );
       const newItems = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
-      // Update cursor BEFORE setState so the next observer fire uses correct cursor
+      // Update cursor BEFORE setState so next observer fire uses correct value
       lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
       const more = snap.docs.length === PAGE_SIZE;
       hasMoreRef.current = more;
@@ -109,11 +110,12 @@ const ProductGrid = () => {
       isFetching.current = false;
       setLoadingMore(false);
     }
-  }, []); // no deps — everything via refs
+  }, []); // stable — no deps needed
 
   useEffect(() => { fetchInitial(); }, [fetchInitial]);
 
-  // ── IntersectionObserver — stable, no stale closures ──────────────────────
+  // ── IntersectionObserver ───────────────────────────────────────────────────
+  // Runs once only — fetchMore is stable so no reconnect churn
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -123,7 +125,7 @@ const ProductGrid = () => {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [fetchMore]); // fetchMore is stable (no deps), so this runs once only
+  }, [fetchMore]);
 
   // ── Category filter from Navbar / Footer ───────────────────────────────────
   useEffect(() => {
@@ -140,7 +142,7 @@ const ProductGrid = () => {
     ? products.filter((p) => p.category === activeCategory)
     : products;
 
-  // ── Skeleton ───────────────────────────────────────────────────────────────
+  // ── Loading skeleton ───────────────────────────────────────────────────────
   if (loading) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
@@ -161,6 +163,7 @@ const ProductGrid = () => {
     );
   }
 
+  // ── Empty ──────────────────────────────────────────────────────────────────
   if (products.length === 0) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:px-8">
@@ -215,7 +218,7 @@ const ProductGrid = () => {
         </div>
       )}
 
-      {/* ── Count — correct for both All and filtered views ── */}
+      {/* Count */}
       <p className="mb-4 font-body text-sm text-muted-foreground">
         {activeCategory
           ? `${filtered.length} ${filtered.length === 1 ? "product" : "products"} in ${activeCategory}`
@@ -226,7 +229,7 @@ const ProductGrid = () => {
       {filtered.length === 0 ? (
         <div className="py-20 text-center">
           <p className="font-heading text-lg font-semibold">No products in this category yet</p>
-          <p className="mt-1 font-body text-sm text-muted-foreground">Check back soon or browse all products</p>
+          <p className="mt-1 font-body text-sm text-muted-foreground">Check back soon or browse all</p>
           <Button className="mt-4 rounded-full" onClick={() => setActiveCategory(null)}>View All</Button>
         </div>
       ) : (
@@ -241,26 +244,21 @@ const ProductGrid = () => {
             {filtered.map((product, index) => (
               <ProductCard key={product.id} product={product} priority={index < 4} />
             ))}
-            {/* Inline skeleton cards while next page loads */}
             {loadingMore && Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={`skel-${i}`} />
             ))}
           </motion.div>
 
-          {/* Sentinel — watched by IntersectionObserver, triggers fetchMore */}
-          {!activeCategory && (
-            <div ref={sentinelRef} className="h-2 w-full" aria-hidden="true" />
-          )}
+          {/* Sentinel — always mounted, observer fires fetchMore when visible */}
+          <div ref={sentinelRef} className="h-2 w-full" aria-hidden="true" />
 
-          {/* Spinner below grid as secondary loading indicator */}
           {loadingMore && (
             <div className="mt-6 flex justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           )}
 
-          {/* End of catalogue */}
-          {!activeCategory && !hasMore && products.length > PAGE_SIZE && (
+          {!hasMore && products.length > PAGE_SIZE && (
             <p className="mt-10 text-center font-body text-sm text-muted-foreground">
               You've seen all {products.length} products ✨
             </p>
