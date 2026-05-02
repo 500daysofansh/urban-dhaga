@@ -29,6 +29,14 @@ const SkeletonCard = () => (
   </div>
 );
 
+const buildCategories = (items: Product[]) => {
+  const unique = [...new Set(items.map((p) => p.category))];
+  return [
+    ...CATEGORY_ORDER.filter((c) => unique.includes(c)),
+    ...unique.filter((c) => !CATEGORY_ORDER.includes(c)),
+  ];
+};
+
 const ProductGrid = () => {
   const [products, setProducts]             = useState<Product[]>([]);
   const [categories, setCategories]         = useState<string[]>([]);
@@ -37,31 +45,30 @@ const ProductGrid = () => {
   const [loadingMore, setLoadingMore]       = useState(false);
   const [hasMore, setHasMore]               = useState(true);
 
-  // Keep lastDoc in a ref so fetchMore always reads the latest value
-  // without needing to be in the dependency array (avoids stale closures)
-  const lastDocRef  = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const isFetching  = useRef(false); // prevents double-firing
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  // ── Refs — avoid stale closures in IntersectionObserver ───────────────────
+  const lastDocRef   = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const isFetching   = useRef(false);
+  const hasMoreRef   = useRef(true);
+  const sentinelRef  = useRef<HTMLDivElement>(null);
 
-  const buildCategories = (items: Product[]) => {
-    const unique = [...new Set(items.map((p) => p.category))];
-    return [
-      ...CATEGORY_ORDER.filter((c) => unique.includes(c)),
-      ...unique.filter((c) => !CATEGORY_ORDER.includes(c)),
-    ];
-  };
+  // Keep hasMoreRef in sync with state
+  useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
 
   // ── Initial fetch ──────────────────────────────────────────────────────────
   const fetchInitial = useCallback(async () => {
     setLoading(true);
+    isFetching.current = false;
+    lastDocRef.current = null;
     try {
       const snap = await getDocs(
         query(collection(db, "products"), orderBy("name"), limit(PAGE_SIZE))
       );
       const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
       lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+      const more = snap.docs.length === PAGE_SIZE;
+      hasMoreRef.current = more;
       setProducts(items);
-      setHasMore(snap.docs.length === PAGE_SIZE);
+      setHasMore(more);
       setCategories(buildCategories(items));
     } catch (err) {
       console.error("fetchInitial failed:", err);
@@ -70,10 +77,10 @@ const ProductGrid = () => {
     }
   }, []);
 
-  // ── Load next page ─────────────────────────────────────────────────────────
-  // Uses refs instead of state for guard checks — no stale closure issues
+  // ── Fetch next page ────────────────────────────────────────────────────────
+  // Reads from refs only — zero stale closure risk
   const fetchMore = useCallback(async () => {
-    if (isFetching.current || !lastDocRef.current) return;
+    if (isFetching.current || !hasMoreRef.current || !lastDocRef.current) return;
     isFetching.current = true;
     setLoadingMore(true);
     try {
@@ -86,46 +93,39 @@ const ProductGrid = () => {
         )
       );
       const newItems = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
-
-      // Update lastDoc ref BEFORE setState so next observer fire is correct
+      // Update cursor BEFORE setState so the next observer fire uses correct cursor
       lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
-      const noMore = snap.docs.length < PAGE_SIZE;
-
+      const more = snap.docs.length === PAGE_SIZE;
+      hasMoreRef.current = more;
+      setHasMore(more);
       setProducts((prev) => {
         const merged = [...prev, ...newItems];
         setCategories(buildCategories(merged));
         return merged;
       });
-      setHasMore(!noMore);
     } catch (err) {
       console.error("fetchMore failed:", err);
     } finally {
       isFetching.current = false;
       setLoadingMore(false);
     }
-  }, []); // no deps — reads everything from refs
+  }, []); // no deps — everything via refs
 
   useEffect(() => { fetchInitial(); }, [fetchInitial]);
 
-  // ── IntersectionObserver ───────────────────────────────────────────────────
-  // Re-attaches whenever hasMore or loading changes so it stops when done
+  // ── IntersectionObserver — stable, no stale closures ──────────────────────
   useEffect(() => {
-    if (!hasMore || loading) return;
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) fetchMore();
-      },
+      ([entry]) => { if (entry.isIntersecting) fetchMore(); },
       { rootMargin: "400px", threshold: 0 }
     );
-
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loading, fetchMore]);
+  }, [fetchMore]); // fetchMore is stable (no deps), so this runs once only
 
-  // ── Category filter event ──────────────────────────────────────────────────
+  // ── Category filter from Navbar / Footer ───────────────────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const cat = (e as CustomEvent).detail as string;
@@ -215,10 +215,12 @@ const ProductGrid = () => {
         </div>
       )}
 
+      {/* ── Count — correct for both All and filtered views ── */}
       <p className="mb-4 font-body text-sm text-muted-foreground">
-        {products.length}{hasMore && !activeCategory ? "+" : ""}{" "}
-        {filtered.length === 1 ? "product" : "products"}
-        {activeCategory ? ` in ${activeCategory}` : ""}
+        {activeCategory
+          ? `${filtered.length} ${filtered.length === 1 ? "product" : "products"} in ${activeCategory}`
+          : `${products.length}${hasMore ? "+" : ""} products`
+        }
       </p>
 
       {filtered.length === 0 ? (
@@ -239,25 +241,25 @@ const ProductGrid = () => {
             {filtered.map((product, index) => (
               <ProductCard key={product.id} product={product} priority={index < 4} />
             ))}
-
-            {/* Skeleton cards appear inline while next page loads */}
+            {/* Inline skeleton cards while next page loads */}
             {loadingMore && Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={`skel-${i}`} />
             ))}
           </motion.div>
 
-          {/* Sentinel — IntersectionObserver target, invisible */}
-          {!activeCategory && hasMore && (
+          {/* Sentinel — watched by IntersectionObserver, triggers fetchMore */}
+          {!activeCategory && (
             <div ref={sentinelRef} className="h-2 w-full" aria-hidden="true" />
           )}
 
-          {/* Spinner below grid while fetching (backup visual) */}
+          {/* Spinner below grid as secondary loading indicator */}
           {loadingMore && (
             <div className="mt-6 flex justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           )}
 
+          {/* End of catalogue */}
           {!activeCategory && !hasMore && products.length > PAGE_SIZE && (
             <p className="mt-10 text-center font-body text-sm text-muted-foreground">
               You've seen all {products.length} products ✨
