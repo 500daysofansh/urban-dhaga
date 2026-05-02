@@ -45,13 +45,12 @@ const ProductGrid = () => {
   const [loadingMore, setLoadingMore]       = useState(false);
   const [hasMore, setHasMore]               = useState(true);
 
-  // Refs — never go stale inside callbacks/observers
+  // Refs — never stale inside callbacks/observers
   const lastDocRef  = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const isFetching  = useRef(false);
   const hasMoreRef  = useRef(true);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Keep hasMoreRef in sync with state
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
 
   // ── Initial fetch ──────────────────────────────────────────────────────────
@@ -79,7 +78,6 @@ const ProductGrid = () => {
   }, []);
 
   // ── Fetch next page ────────────────────────────────────────────────────────
-  // Zero deps — reads everything from refs, never stale
   const fetchMore = useCallback(async () => {
     if (isFetching.current || !hasMoreRef.current || !lastDocRef.current) return;
     isFetching.current = true;
@@ -94,7 +92,6 @@ const ProductGrid = () => {
         )
       );
       const newItems = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
-      // Update cursor BEFORE setState so next observer fire uses correct value
       lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
       const more = snap.docs.length === PAGE_SIZE;
       hasMoreRef.current = more;
@@ -110,24 +107,38 @@ const ProductGrid = () => {
       isFetching.current = false;
       setLoadingMore(false);
     }
-  }, []); // stable — no deps needed
+  }, []);
 
   useEffect(() => { fetchInitial(); }, [fetchInitial]);
 
   // ── IntersectionObserver ───────────────────────────────────────────────────
-  // Runs once only — fetchMore is stable so no reconnect churn
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) fetchMore(); },
-      { rootMargin: "400px", threshold: 0 }
+      // Large rootMargin so fetch triggers well before user hits bottom
+      { rootMargin: "0px 0px 1200px 0px", threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [fetchMore]);
 
-  // ── Category filter from Navbar / Footer ───────────────────────────────────
+  // Also trigger fetchMore on scroll as a fallback
+  useEffect(() => {
+    const onScroll = () => {
+      const scrollBottom = window.scrollY + window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight;
+      // When within 1000px of page bottom, fetch more
+      if (docHeight - scrollBottom < 1000) {
+        fetchMore();
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [fetchMore]);
+
+  // ── Category filter ────────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const cat = (e as CustomEvent).detail as string;
@@ -142,7 +153,7 @@ const ProductGrid = () => {
     ? products.filter((p) => p.category === activeCategory)
     : products;
 
-  // ── Loading skeleton ───────────────────────────────────────────────────────
+  // ── Skeleton ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
@@ -163,7 +174,6 @@ const ProductGrid = () => {
     );
   }
 
-  // ── Empty ──────────────────────────────────────────────────────────────────
   if (products.length === 0) {
     return (
       <section id="products" className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:px-8">
@@ -249,7 +259,7 @@ const ProductGrid = () => {
             ))}
           </motion.div>
 
-          {/* Sentinel — always mounted, observer fires fetchMore when visible */}
+          {/* Sentinel — always mounted */}
           <div ref={sentinelRef} className="h-2 w-full" aria-hidden="true" />
 
           {loadingMore && (
