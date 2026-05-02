@@ -277,7 +277,7 @@ const ProductDetail = () => {
                   the box and stays perfectly uniform.
               ──────────────────────────────────────────────────────────────── */}
               {allImages.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                <div className="flex gap-2 overflow-x-auto px-0.5 pt-0.5 pb-1 scrollbar-hide">
                   {allImages.map((img, idx) => (
                     <button
                       key={idx}
