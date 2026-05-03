@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
+import { Helmet } from "react-helmet-async";
 import { db } from "@/lib/firebase";
 import { Product, JEWELRY_CATEGORIES } from "@/types/product";
 import { useCart } from "@/contexts/CartContext";
@@ -14,9 +15,6 @@ import MobileBottomNav from "@/components/MobileBottomNav";
 import { detailImage, optimizeImage } from "@/lib/cloudinary";
 
 // ─── Optimised image component with blur-up effect ────────────────────────────
-// Shows a tiny blurred placeholder instantly while the full image loads.
-// This makes the page feel fast even on slow connections.
-
 const CloudImage = ({
   src,
   alt,
@@ -30,14 +28,11 @@ const CloudImage = ({
 }) => {
   const [loaded, setLoaded] = useState(false);
 
-  // Tiny 20px-wide placeholder — loads in ~200 bytes, appears instantly
   const tinyUrl = optimizeImage(src, 20);
-  // Full display-size URL
-  const fullUrl = detailImage(src); // 800px wide, f_auto, q_auto:good
+  const fullUrl = detailImage(src);
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
-      {/* Blurred placeholder — visible while full image loads */}
       <img
         src={tinyUrl}
         alt=""
@@ -46,7 +41,6 @@ const CloudImage = ({
           loaded ? "opacity-0" : "opacity-100 blur-xl scale-110"
         }`}
       />
-      {/* Full image */}
       <img
         src={fullUrl}
         alt={alt}
@@ -63,6 +57,8 @@ const CloudImage = ({
 
 // ─── ProductDetail ────────────────────────────────────────────────────────────
 
+const BASE_URL = "https://www.urbandhage.in";
+
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -75,7 +71,6 @@ const ProductDetail = () => {
   const [selectedSize, setSelectedSize]   = useState<string | undefined>();
   const [quantity, setQuantity]           = useState(1);
 
-  // ── Touch / swipe state ──────────────────────────────────────────────────
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
 
@@ -87,7 +82,6 @@ const ProductDetail = () => {
   const handleTouchEnd = (e: React.TouchEvent) => {
     const deltaX = touchStartX.current - e.changedTouches[0].clientX;
     const deltaY = touchStartY.current - e.changedTouches[0].clientY;
-    // Only trigger if horizontal swipe > 40px and more horizontal than vertical
     if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY)) {
       deltaX > 0 ? goNext() : goPrev();
     }
@@ -108,7 +102,6 @@ const ProductDetail = () => {
     fetch();
   }, [id]);
 
-  // Preload adjacent images so switching thumbnails feels instant
   const preloadAdjacent = useCallback((images: string[], current: number) => {
     const next = (current + 1) % images.length;
     const prev = (current - 1 + images.length) % images.length;
@@ -136,7 +129,6 @@ const ProductDetail = () => {
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             <div className="mb-6 h-9 w-20 animate-pulse rounded-full bg-muted" />
             <div className="grid gap-8 lg:grid-cols-2">
-              {/* Image skeleton — portrait ratio matches real photos */}
               <div className="space-y-4">
                 <div className="aspect-[4/5] animate-pulse rounded-2xl bg-muted" />
                 <div className="flex gap-3">
@@ -190,6 +182,38 @@ const ProductDetail = () => {
   const rating     = 4.3;
   const reviewCount = 127;
 
+  const canonicalUrl = `${BASE_URL}/product/${product.id}`;
+  const ogImage      = detailImage(allImages[0]);
+  // Keep description under 155 chars for Google snippet
+  const metaDesc     = product.description.length > 155
+    ? product.description.slice(0, 152) + "..."
+    : product.description;
+
+  // ── JSON-LD structured data ───────────────────────────────────────────────
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    image: allImages.map(detailImage),
+    description: product.description,
+    brand: { "@type": "Brand", name: "Urban Dhage" },
+    offers: {
+      "@type": "Offer",
+      price: product.price,
+      priceCurrency: "INR",
+      availability: product.inStock
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock",
+      url: canonicalUrl,
+      seller: { "@type": "Organization", name: "Urban Dhage" },
+    },
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: rating,
+      reviewCount,
+    },
+  };
+
   const handleAddToCart = () => {
     if (hasSizes && !selectedSize) {
       toast({ title: "Please select a size", variant: "destructive" });
@@ -207,6 +231,34 @@ const ProductDetail = () => {
 
   return (
     <div className="flex min-h-screen flex-col">
+
+      {/* ── SEO: per-product meta tags + JSON-LD ── */}
+      <Helmet>
+        <title>{product.name} — Urban Dhage</title>
+        <meta name="description" content={metaDesc} />
+        <link rel="canonical" href={canonicalUrl} />
+
+        {/* Open Graph */}
+        <meta property="og:title" content={`${product.name} — Urban Dhage`} />
+        <meta property="og:description" content={metaDesc} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:image" content={ogImage} />
+        <meta property="og:type" content="product" />
+        <meta property="product:price:amount" content={String(product.price)} />
+        <meta property="product:price:currency" content="INR" />
+
+        {/* Twitter */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={`${product.name} — Urban Dhage`} />
+        <meta name="twitter:description" content={metaDesc} />
+        <meta name="twitter:image" content={ogImage} />
+
+        {/* JSON-LD */}
+        <script type="application/ld+json">
+          {JSON.stringify(jsonLd)}
+        </script>
+      </Helmet>
+
       <Navbar />
       <main className="flex-1 pb-16 md:pb-0">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -219,9 +271,6 @@ const ProductDetail = () => {
 
             {/* ── Image panel ── */}
             <div className="space-y-3">
-
-              {/* Main image — swipeable on mobile, portrait ratio (4:5)
-                  Added `group` so desktop hover shows the arrow buttons. */}
               <div
                 className="group relative overflow-hidden rounded-2xl bg-muted aspect-[4/5]"
                 onTouchStart={handleTouchStart}
@@ -234,7 +283,6 @@ const ProductDetail = () => {
                   eager={true}
                 />
 
-                {/* Prev / Next arrows — always visible on mobile, hover-only on desktop */}
                 {allImages.length > 1 && (
                   <>
                     <button
@@ -250,7 +298,6 @@ const ProductDetail = () => {
                       <ChevronRight className="h-4 w-4" />
                     </button>
 
-                    {/* Dot indicator */}
                     <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
                       {allImages.map((_, idx) => (
                         <button
@@ -268,14 +315,6 @@ const ProductDetail = () => {
                 )}
               </div>
 
-              {/* ── Thumbnails ─────────────────────────────────────────────────
-                  FIX: `overflow-hidden` on the same element as `ring` causes
-                  the ring to be clipped by border-radius, making the outline
-                  look irregular/broken. Solution: outer <button> holds only
-                  the ring + focus styles (no overflow-hidden), inner <span>
-                  handles the clipping. This way the ring renders fully outside
-                  the box and stays perfectly uniform.
-              ──────────────────────────────────────────────────────────────── */}
               {allImages.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto px-0.5 pt-0.5 pb-1 scrollbar-hide">
                   {allImages.map((img, idx) => (
@@ -288,8 +327,6 @@ const ProductDetail = () => {
                           : "ring-transparent opacity-60 hover:opacity-90 hover:ring-border"
                       }`}
                     >
-                      {/* Inner span clips the image to rounded corners independently
-                          of the outer ring — this is the key fix for irregular outlines */}
                       <span className="block h-full w-full overflow-hidden rounded-[10px]">
                         <img
                           src={optimizeImage(img, 160)}
