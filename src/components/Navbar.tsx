@@ -146,9 +146,9 @@ const Navbar = () => {
             </div>
 
             {/* Wishlist icon */}
-            <Link to="/wishlist" className="relative ml-1">
+            <Link to="/wishlist" className="group relative ml-1">
               <Button variant="ghost" size="icon">
-                <Heart className="h-5 w-5 text-foreground" />
+                <Heart className="h-5 w-5 text-foreground transition-all duration-150 group-hover:fill-white group-hover:text-white" />
                 {wishlistTotal > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary font-body text-xs text-primary-foreground">
                     {wishlistTotal > 9 ? "9+" : wishlistTotal}
