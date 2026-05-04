@@ -45,23 +45,17 @@ const ProductGrid = () => {
   const [loadingMore, setLoadingMore]       = useState(false);
   const [hasMore, setHasMore]               = useState(true);
 
-  // Use refs for values needed inside callbacks/observers to avoid stale closures
   const lastDocRef  = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const isFetching  = useRef(false);
   const hasMoreRef  = useRef(true);
-  const sentinelRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   // Keep ref in sync with state
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
 
-  // ── fetchMore — stable ref so observer never goes stale ───────────────────
-  // We store it in a ref so the IntersectionObserver callback always calls
-  // the latest version without needing to re-observe on every render.
   const fetchMoreRef = useRef<() => Promise<void>>();
 
   const fetchMore = useCallback(async () => {
-    // Guard: don't fire if already fetching, no more pages, or no cursor
     if (isFetching.current) return;
     if (!hasMoreRef.current) return;
     if (!lastDocRef.current) return;
@@ -80,7 +74,6 @@ const ProductGrid = () => {
       );
 
       if (snap.docs.length === 0) {
-        // No more docs — mark done
         hasMoreRef.current = false;
         setHasMore(false);
         return;
@@ -89,15 +82,12 @@ const ProductGrid = () => {
       const newItems = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
       lastDocRef.current = snap.docs[snap.docs.length - 1];
 
-      // Only mark hasMore=false when we actually get fewer than PAGE_SIZE docs
-      // This avoids premature termination on slow networks
       const more = snap.docs.length >= PAGE_SIZE;
       hasMoreRef.current = more;
       setHasMore(more);
 
       setProducts((prev) => {
         const ids = new Set(prev.map((p) => p.id));
-        // Deduplicate — prevents double-adding if observer fires twice rapidly
         const deduped = newItems.filter((p) => !ids.has(p.id));
         const merged = [...prev, ...deduped];
         setCategories(buildCategories(merged));
@@ -105,14 +95,12 @@ const ProductGrid = () => {
       });
     } catch (err) {
       console.error("fetchMore failed:", err);
-      // Don't mark hasMore=false on error — let the next scroll attempt retry
     } finally {
       isFetching.current = false;
       setLoadingMore(false);
     }
   }, []);
 
-  // Keep fetchMoreRef current
   useEffect(() => { fetchMoreRef.current = fetchMore; }, [fetchMore]);
 
   // ── Initial fetch ──────────────────────────────────────────────────────────
@@ -132,8 +120,6 @@ const ProductGrid = () => {
       const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
       lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
 
-      // FIX: use >= instead of === so we don't flip hasMore=false if Firestore
-      // returns slightly fewer than PAGE_SIZE due to deleted/filtered docs
       const more = snap.docs.length >= PAGE_SIZE;
       hasMoreRef.current = more;
 
@@ -149,12 +135,24 @@ const ProductGrid = () => {
 
   useEffect(() => { fetchInitial(); }, [fetchInitial]);
 
-  // ── IntersectionObserver — re-attaches whenever sentinel mounts/unmounts ──
-  // FIX: We observe the sentinel in a useEffect with sentinelRef.current as
-  // a dependency-like trigger by using a callback ref pattern.
-  // The observer always calls fetchMoreRef.current so it never goes stale.
+  // ── FIX: Auto-fetch more when a category is active and results are sparse ──
+  // When the user clicks "Sarees" (or any category) before scrolling to load
+  // all products, we may only have e.g. 3 sarees in memory from the first
+  // page. This effect keeps fetching until we have at least PAGE_SIZE items
+  // for the selected category, or there are no more products to load.
+  useEffect(() => {
+    if (!activeCategory) return;
+    if (!hasMore) return;
+    if (isFetching.current) return;
+
+    const count = products.filter((p) => p.category === activeCategory).length;
+    if (count < PAGE_SIZE) {
+      fetchMoreRef.current?.();
+    }
+  }, [activeCategory, products, hasMore]);
+
+  // ── IntersectionObserver sentinel (callback ref) ───────────────────────────
   const attachObserver = useCallback((node: HTMLDivElement | null) => {
-    // Disconnect old observer first
     if (observerRef.current) {
       observerRef.current.disconnect();
       observerRef.current = null;
@@ -168,14 +166,13 @@ const ProductGrid = () => {
           fetchMoreRef.current?.();
         }
       },
-      // rootMargin: start loading 800px before sentinel enters viewport
       { rootMargin: "0px 0px 800px 0px", threshold: 0 }
     );
 
     observerRef.current.observe(node);
   }, []);
 
-  // ── Scroll fallback — catches cases where observer misfires on iOS Safari ──
+  // ── Scroll fallback (iOS Safari) ──────────────────────────────────────────
   useEffect(() => {
     const onScroll = () => {
       if (!hasMoreRef.current || isFetching.current) return;
@@ -189,7 +186,7 @@ const ProductGrid = () => {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // ── Category filter ────────────────────────────────────────────────────────
+  // ── Category filter (from Hero / Navbar events) ───────────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const cat = (e as CustomEvent).detail as string;
@@ -282,12 +279,12 @@ const ProductGrid = () => {
       {/* Count */}
       <p className="mb-4 font-body text-sm text-muted-foreground">
         {activeCategory
-          ? `${filtered.length} ${filtered.length === 1 ? "product" : "products"} in ${activeCategory}`
+          ? `${filtered.length}${hasMore ? "+" : ""} ${filtered.length === 1 ? "product" : "products"} in ${activeCategory}`
           : `${products.length}${hasMore ? "+" : ""} products`
         }
       </p>
 
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && !loadingMore ? (
         <div className="py-20 text-center">
           <p className="font-heading text-lg font-semibold">No products in this category yet</p>
           <p className="mt-1 font-body text-sm text-muted-foreground">Check back soon or browse all</p>
@@ -312,9 +309,11 @@ const ProductGrid = () => {
             ))}
           </motion.div>
 
-          {/* Sentinel — uses callback ref so observer re-attaches on remount.
-              Only rendered when not filtering (category scroll doesn't need pagination) */}
-          {!activeCategory && hasMore && (
+          {/* FIX: Sentinel is always shown when hasMore is true,
+              regardless of whether a category filter is active.
+              Previously this was {!activeCategory && hasMore && ...}
+              which disabled infinite scroll while filtering. */}
+          {hasMore && (
             <div ref={attachObserver} className="h-4 w-full" aria-hidden="true" />
           )}
 
