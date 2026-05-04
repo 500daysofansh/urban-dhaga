@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Product, JEWELRY_CATEGORIES } from "@/types/product";
 import { useCart } from "@/contexts/CartContext";
+import { useWishlist } from "@/contexts/WishlistContext";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, Heart } from "lucide-react";
 import { motion } from "framer-motion";
@@ -28,23 +29,22 @@ const StarRating = ({ rating, count }: { rating: number; count: number }) => (
   </div>
 );
 
-// Detect mobile once at module level — avoids repeated checks per render
 const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-
-// Auto-advance interval on mobile (ms)
 const SLIDE_INTERVAL = 2200;
 
 const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const { addToCart } = useCart();
+  const { toggleWishlist, isWishlisted } = useWishlist();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [wishlisted, setWishlisted] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+
+  const wishlisted = isWishlisted(product.id);
 
   const allImages = product.images?.length > 0 ? product.images : [product.image];
   const isJewelry = JEWELRY_CATEGORIES.some(
@@ -72,22 +72,18 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     [allImages]
   );
 
-  // ── Mobile: auto-slideshow using IntersectionObserver ──────────────────────
-  // Only starts when the card is visible on screen, stops when scrolled away.
-  // This avoids wasting resources on cards out of viewport.
+  // ── Mobile: auto-slideshow ─────────────────────────────────────────────────
   useEffect(() => {
     if (!isMobile || !hasMultiple) return;
-
     const card = cardRef.current;
     if (!card) return;
 
     const startSlide = () => {
-      if (intervalRef.current) return; // already running
+      if (intervalRef.current) return;
       intervalRef.current = setInterval(() => {
         setActiveIdx((prev) => (prev + 1) % allImages.length);
       }, SLIDE_INTERVAL);
     };
-
     const stopSlide = () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -97,25 +93,15 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          startSlide();
-        } else {
-          stopSlide();
-          setActiveIdx(0); // reset to first image when out of view
-        }
+        if (entry.isIntersecting) startSlide();
+        else { stopSlide(); setActiveIdx(0); }
       },
-      { threshold: 0.4 } // card must be 40% visible to start sliding
+      { threshold: 0.4 }
     );
-
     observer.observe(card);
-
-    return () => {
-      observer.disconnect();
-      stopSlide();
-    };
+    return () => { observer.disconnect(); stopSlide(); };
   }, [isMobile, hasMultiple, allImages.length]);
 
-  // ── Desktop: hover image swap ──────────────────────────────────────────────
   const handleMouseEnter = () => {
     if (isMobile) return;
     setIsHovered(true);
@@ -125,9 +111,6 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     }
   };
 
-  // Current image to display
-  // Mobile: driven by activeIdx (auto-slideshow)
-  // Desktop: driven by isHovered (swap to image[1] on hover)
   const displayImage = isMobile
     ? optimizedImages[activeIdx] ?? optimizedImages[0]
     : isHovered && hasMultiple
@@ -150,8 +133,11 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const handleWishlist = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setWishlisted((prev) => !prev);
-    toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist" });
+    toggleWishlist(product);
+    toast({
+      title: wishlisted ? "Removed from wishlist" : "Added to wishlist",
+      description: product.name,
+    });
   };
 
   const handleSizeClick = (e: React.MouseEvent, size: string) => {
@@ -191,15 +177,20 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             {badgeLabel}
           </span>
 
-          {/* Wishlist */}
+          {/* Wishlist button — now connected to WishlistContext */}
           <button
             onClick={handleWishlist}
             className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur-sm transition-colors hover:bg-background"
+            aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
           >
-            <Heart className={`h-3.5 w-3.5 transition-colors ${wishlisted ? "fill-accent text-accent" : "text-muted-foreground"}`} />
+            <Heart
+              className={`h-3.5 w-3.5 transition-colors ${
+                wishlisted ? "fill-accent text-accent" : "text-muted-foreground"
+              }`}
+            />
           </button>
 
-          {/* Dots — show on mobile always (slideshow indicator), on desktop only on hover */}
+          {/* Dots */}
           {hasMultiple && (
             <div className={`absolute bottom-2.5 left-1/2 flex -translate-x-1/2 gap-1 transition-opacity duration-300 ${
               isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
@@ -209,8 +200,8 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
                   key={idx}
                   className={`rounded-full transition-all duration-300 ${
                     activeIdx === idx || (!isMobile && isHovered && idx === 1) || (!isMobile && !isHovered && idx === 0)
-                      ? "h-1.5 w-4 bg-white"        // active dot: wide pill
-                      : "h-1.5 w-1.5 bg-white/50"   // inactive dot: small circle
+                      ? "h-1.5 w-4 bg-white"
+                      : "h-1.5 w-1.5 bg-white/50"
                   }`}
                 />
               ))}
