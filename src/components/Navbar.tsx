@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingBag, Menu, X, User, LogOut, Search, ChevronDown, Package } from "lucide-react";
+import { ShoppingBag, Menu, X, User, LogOut, Search, ChevronDown, Package, Heart } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import { useWishlist } from "@/contexts/WishlistContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
@@ -14,25 +15,12 @@ const CATEGORIES = [
   { name: "New Arrivals" },
 ];
 
-// SVG diamond separator — replaces the ✦ emoji character.
-// Inline SVG so it renders identically on every OS/font.
 const Diamond = () => (
-  <svg
-    viewBox="0 0 10 10"
-    width="7"
-    height="7"
-    className="inline-block shrink-0"
-    aria-hidden="true"
-  >
-    <polygon
-      points="5,0.5 9.5,5 5,9.5 0.5,5"
-      fill="currentColor"
-      opacity="0.6"
-    />
+  <svg viewBox="0 0 10 10" width="7" height="7" className="inline-block shrink-0" aria-hidden="true">
+    <polygon points="5,0.5 9.5,5 5,9.5 0.5,5" fill="currentColor" opacity="0.6" />
   </svg>
 );
 
-// Marquee items — text + separator interleaved
 const MARQUEE_ITEMS = [
   "Handcrafted",
   "Sustainable",
@@ -44,6 +32,7 @@ const MARQUEE_ITEMS = [
 
 const Navbar = () => {
   const { totalItems } = useCart();
+  const { totalItems: wishlistTotal } = useWishlist();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -92,11 +81,7 @@ const Navbar = () => {
 
           {/* Logo */}
           <Link to="/" className="flex items-center">
-            <img
-              src="/logo.png"
-              alt="Urban Dhage"
-              className="h-10 w-auto object-contain"
-            />
+            <img src="/logo.png" alt="Urban Dhage" className="h-10 w-auto object-contain" />
           </Link>
 
           {/* Desktop nav */}
@@ -121,7 +106,6 @@ const Navbar = () => {
                 />
               </button>
 
-              {/* Dropdown */}
               <div
                 className={`absolute left-0 top-full w-48 overflow-hidden rounded-xl border bg-popover shadow-lg transition-all duration-200 ${
                   dropdownOpen
@@ -143,35 +127,35 @@ const Navbar = () => {
               </div>
             </div>
 
-            {/* Expandable search */}
+            {/* Search */}
             <div className="relative flex items-center">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSearchOpen(!searchOpen)}
-                className="shrink-0"
-              >
+              <Button variant="ghost" size="icon" onClick={() => setSearchOpen(!searchOpen)} className="shrink-0">
                 <Search className="h-4 w-4" />
               </Button>
-              <div
-                className={`overflow-hidden transition-all duration-300 ${
-                  searchOpen ? "w-48" : "w-0"
-                }`}
-              >
+              <div className={`overflow-hidden transition-all duration-300 ${searchOpen ? "w-48" : "w-0"}`}>
                 <input
                   ref={searchRef}
                   placeholder="Search products..."
                   className="h-8 w-full rounded-lg border bg-muted/50 px-3 font-body text-sm outline-none focus:ring-1 focus:ring-ring"
                   onBlur={() => setSearchOpen(false)}
                   onChange={(e) => {
-                    // Dispatch search event — ProductGrid can listen to this
-                    window.dispatchEvent(
-                      new CustomEvent("search-products", { detail: e.target.value })
-                    );
+                    window.dispatchEvent(new CustomEvent("search-products", { detail: e.target.value }));
                   }}
                 />
               </div>
             </div>
+
+            {/* Wishlist icon */}
+            <Link to="/wishlist" className="relative ml-1">
+              <Button variant="ghost" size="icon">
+                <Heart className={`h-5 w-5 ${wishlistTotal > 0 ? "fill-accent text-accent" : ""}`} />
+                {wishlistTotal > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent font-body text-xs text-white">
+                    {wishlistTotal > 9 ? "9+" : wishlistTotal}
+                  </span>
+                )}
+              </Button>
+            </Link>
 
             {/* Cart */}
             <Link to="/cart" className="relative ml-1">
@@ -198,12 +182,7 @@ const Navbar = () => {
                   <Package className="h-3.5 w-3.5" />
                   My Orders
                 </Link>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleLogout}
-                  title="Logout"
-                >
+                <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
                   <LogOut className="h-4 w-4" />
                 </Button>
               </div>
@@ -228,11 +207,7 @@ const Navbar = () => {
                 )}
               </Button>
             </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
+            <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
           </div>
@@ -242,11 +217,7 @@ const Navbar = () => {
         {mobileMenuOpen && (
           <div className="border-t bg-background px-4 py-4 md:hidden">
             <div className="flex flex-col gap-3">
-              <Link
-                to="/"
-                onClick={() => setMobileMenuOpen(false)}
-                className="font-body text-sm font-medium text-muted-foreground"
-              >
+              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="font-body text-sm font-medium text-muted-foreground">
                 Home
               </Link>
 
@@ -266,6 +237,21 @@ const Navbar = () => {
 
               <div className="my-1 border-t border-border" />
 
+              {/* Wishlist link in mobile menu */}
+              <Link
+                to="/wishlist"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-1.5 font-body text-sm font-medium text-muted-foreground"
+              >
+                <Heart className={`h-4 w-4 ${wishlistTotal > 0 ? "fill-accent text-accent" : ""}`} />
+                Wishlist
+                {wishlistTotal > 0 && (
+                  <span className="ml-1 rounded-full bg-accent px-1.5 py-0.5 font-body text-[10px] text-white">
+                    {wishlistTotal}
+                  </span>
+                )}
+              </Link>
+
               {user ? (
                 <>
                   <Link
@@ -277,17 +263,8 @@ const Navbar = () => {
                     My Orders
                   </Link>
                   <div className="flex items-center justify-between">
-                    <span className="truncate font-body text-sm text-muted-foreground">
-                      {user.email}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        handleLogout();
-                        setMobileMenuOpen(false);
-                      }}
-                    >
+                    <span className="truncate font-body text-sm text-muted-foreground">{user.email}</span>
+                    <Button variant="ghost" size="sm" onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
                       <LogOut className="mr-1 h-4 w-4" /> Logout
                     </Button>
                   </div>
@@ -306,19 +283,14 @@ const Navbar = () => {
         )}
       </nav>
 
-      {/* ── Marquee strip ─────────────────────────────────────────────────────── */}
-      {/* Uses SVG diamond separators instead of ✦ emoji */}
+      {/* Marquee strip */}
       <div className="overflow-hidden border-b border-black/10 bg-[hsl(var(--silver))] py-2 text-[hsl(var(--silver-foreground))]">
         <div className="marquee-strip">
-          {/* Duplicate the set 4× so the loop is seamless at any screen width */}
           {Array.from({ length: 4 }).map((_, groupIdx) => (
             <span key={groupIdx} className="flex shrink-0 items-center">
               {MARQUEE_ITEMS.map((item, itemIdx) => (
-                <span
-                  key={itemIdx}
-                  className="flex shrink-0 items-center gap-4 px-4"
-                >
-                  <span className="font-body text-xs font-medium uppercase tracking-widest whitespace-nowrap">
+                <span key={itemIdx} className="flex shrink-0 items-center gap-4 px-4">
+                  <span className="whitespace-nowrap font-body text-xs font-medium uppercase tracking-widest">
                     {item}
                   </span>
                   <Diamond />
