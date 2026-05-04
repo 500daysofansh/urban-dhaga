@@ -15,15 +15,21 @@ const GoogleIcon = () => (
   </svg>
 );
 
+// Same check as AuthContext — user-agent based, not screen size
+const isMobileDevice = () =>
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+
 const UserLogin = () => {
-  const [isSignup, setIsSignup] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [isSignup, setIsSignup]             = useState(false);
+  const [email, setEmail]                   = useState("");
+  const [password, setPassword]             = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword]     = useState(false);
+  const [isLoading, setIsLoading]           = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [showReset, setShowReset] = useState(false);
+  const [showReset, setShowReset]           = useState(false);
 
   const { login, signup, loginWithGoogle, resetPassword } = useAuth();
   const navigate = useNavigate();
@@ -33,20 +39,33 @@ const UserLogin = () => {
     setIsGoogleLoading(true);
     try {
       await loginWithGoogle();
+
+      if (isMobileDevice()) {
+        // On mobile, loginWithGoogle() triggers a page redirect to Google.
+        // The page navigates away here — we never reach the lines below on mobile.
+        // The user will return to the app and AuthContext handles the result.
+        // We keep the spinner showing (page is navigating away anyway).
+        return;
+      }
+
+      // Desktop only: popup resolves immediately
       toast({ title: "Welcome! 👋", description: "Signed in with Google." });
       navigate("/");
     } catch (error: any) {
       const code = error?.code || "";
-      if (code !== "auth/popup-closed-by-user") {
+      // Don't show an error toast if user just closed the popup
+      if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
         toast({
           title: "Google sign-in failed",
           description: "Something went wrong. Please try again.",
           variant: "destructive",
         });
       }
-    } finally {
       setIsGoogleLoading(false);
     }
+    // Note: don't setIsGoogleLoading(false) in finally on mobile —
+    // if we get here on desktop, the catch above already handles it,
+    // and the navigate("/") causes unmount. On mobile the page navigates away.
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,10 +91,10 @@ const UserLogin = () => {
     } catch (error: any) {
       const code = error?.code || "";
       let message = "Something went wrong. Please try again.";
-      if (code === "auth/email-already-in-use") message = "This email is already registered. Try signing in.";
+      if (code === "auth/email-already-in-use")       message = "This email is already registered. Try signing in.";
       else if (code === "auth/invalid-credential" || code === "auth/wrong-password") message = "Invalid email or password.";
-      else if (code === "auth/user-not-found") message = "No account found with this email.";
-      else if (code === "auth/too-many-requests") message = "Too many attempts. Please try again later.";
+      else if (code === "auth/user-not-found")         message = "No account found with this email.";
+      else if (code === "auth/too-many-requests")      message = "Too many attempts. Please try again later.";
       toast({ title: isSignup ? "Signup failed" : "Login failed", description: message, variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -159,11 +178,17 @@ const UserLogin = () => {
           onClick={handleGoogleLogin}
           disabled={isGoogleLoading || isLoading}
         >
-          {isGoogleLoading
-            ? <Loader2 className="h-4 w-4 animate-spin" />
-            : <GoogleIcon />
-          }
-          Continue with Google
+          {isGoogleLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {isMobileDevice() ? "Redirecting to Google…" : "Signing in…"}
+            </>
+          ) : (
+            <>
+              <GoogleIcon />
+              Continue with Google
+            </>
+          )}
         </Button>
 
         {/* Divider */}
