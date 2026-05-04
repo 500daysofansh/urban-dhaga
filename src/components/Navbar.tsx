@@ -148,9 +148,9 @@ const Navbar = () => {
             {/* Wishlist icon */}
             <Link to="/wishlist" className="relative ml-1">
               <Button variant="ghost" size="icon">
-                <Heart className={`h-5 w-5 ${wishlistTotal > 0 ? "fill-accent text-accent" : ""}`} />
+                <Heart className="h-5 w-5 text-foreground" />
                 {wishlistTotal > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent font-body text-xs text-white">
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary font-body text-xs text-primary-foreground">
                     {wishlistTotal > 9 ? "9+" : wishlistTotal}
                   </span>
                 )}
@@ -243,10 +243,10 @@ const Navbar = () => {
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-1.5 font-body text-sm font-medium text-muted-foreground"
               >
-                <Heart className={`h-4 w-4 ${wishlistTotal > 0 ? "fill-accent text-accent" : ""}`} />
+                <Heart className="h-4 w-4" />
                 Wishlist
                 {wishlistTotal > 0 && (
-                  <span className="ml-1 rounded-full bg-accent px-1.5 py-0.5 font-body text-[10px] text-white">
+                  <span className="ml-1 rounded-full bg-primary px-1.5 py-0.5 font-body text-[10px] text-primary-foreground">
                     {wishlistTotal}
                   </span>
                 )}
