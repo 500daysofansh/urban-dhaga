@@ -70,6 +70,7 @@ const App = () => (
                   <Route path="/returns" element={<Returns />} />
                   <Route path="/shipping" element={<ShippingInfo />} />
                   <Route path="/admin/login" element={<AdminLogin />} />
+                  <Route path="/account" element={<AccountSettings />} />
                   <Route
                     path="/admin"
                     element={
