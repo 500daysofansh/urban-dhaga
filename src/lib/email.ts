@@ -5,7 +5,6 @@ const PUBLIC_KEY = "a5MUx20kzvERzjdBr";
 const CUST_TPL   = "template_fqu1999";
 const ADMIN_TPL  = "template_bv8hdi4";
 
-// Create this template in your EmailJS dashboard
 const STATUS_TPL = "template_status_update";
 
 export interface OrderEmailData {
@@ -62,9 +61,6 @@ export async function sendOrderEmails(data: OrderEmailData) {
   ]);
 }
 
-// Human-readable labels and messages for each status.
-// emoji field removed — UI now uses SVG icons via STATUS_SVG in MyOrders.tsx.
-// Email templates receive status_label as plain text.
 export const STATUS_META: Record<OrderStatus, { label: string; message: string }> = {
   order_placed: {
     label:   "Order Placed",
@@ -89,6 +85,10 @@ export const STATUS_META: Record<OrderStatus, { label: string; message: string }
   order_delivered: {
     label:   "Order Delivered",
     message: "Your order has been delivered successfully! We hope you love your purchase. Thank you for shopping with Urban Dhage!",
+  },
+  order_cancelled: {
+    label:   "Order Cancelled",
+    message: "Your order has been cancelled. If you were charged, a refund will be processed within 5–7 business days.",
   },
 };
 
