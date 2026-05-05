@@ -23,6 +23,7 @@ import MyOrders from "./pages/MyOrders.tsx";
 import SizeGuide from "./pages/SizeGuide.tsx";
 import Returns from "./pages/Returns.tsx";
 import ShippingInfo from "./pages/ShippingInfo.tsx";
+import AccountSettings from "./pages/AccountSettings.tsx";
 
 const queryClient = new QueryClient();
 
