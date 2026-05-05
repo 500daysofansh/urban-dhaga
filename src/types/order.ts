@@ -21,7 +21,8 @@ export type OrderStatus =
   | "order_processed"    // admin manually marks: order confirmed & processing
   | "order_shipped"      // admin manually marks: shipped
   | "out_for_delivery"   // admin manually marks: out for delivery
-  | "order_delivered";   // admin manually marks: delivered
+  | "order_delivered"    // admin manually marks: delivered
+  | "order_cancelled";   // customer or admin cancelled
 
 export interface Order {
   id: string;
@@ -39,4 +40,6 @@ export interface Order {
     timestamp: number;
     note?: string;
   }[];
+  cancelledAt?: number;
+  cancellationReason?: string;
 }
