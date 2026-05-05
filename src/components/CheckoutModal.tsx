@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { X, MapPin, Loader2 } from "lucide-react";
+import { X, MapPin, Loader2, ChevronDown, CheckCircle2, Plus } from "lucide-react";
 import { ShippingAddress } from "@/types/order";
 import { sendOrderEmails } from "@/lib/email";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, getDoc } from "firebase/firestore";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface CheckoutModalProps {
   open: boolean;
@@ -33,30 +34,72 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
   const { items, totalPrice, clearCart } = useCart();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const [savedAddresses, setSavedAddresses] = useState<ShippingAddress[]>([]);
+  const [selectedSavedIdx, setSelectedSavedIdx] = useState<number | null>(null);
+  const [useNewAddress, setUseNewAddress] = useState(false);
   const [address, setAddress] = useState<ShippingAddress>(empty);
+  const [loadingSaved, setLoadingSaved] = useState(false);
   const [paying, setPaying] = useState(false);
 
+  // Load saved addresses when modal opens
+  useEffect(() => {
+    if (!open || !user) return;
+    const load = async () => {
+      setLoadingSaved(true);
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          const addrs: ShippingAddress[] = data.savedAddresses ?? [];
+          const defaultIdx: number = data.defaultAddressIndex ?? 0;
+          setSavedAddresses(addrs);
+          if (addrs.length > 0) {
+            setSelectedSavedIdx(defaultIdx < addrs.length ? defaultIdx : 0);
+            setUseNewAddress(false);
+          } else {
+            setUseNewAddress(true);
+          }
+        } else {
+          setUseNewAddress(true);
+        }
+      } catch (e) {
+        setUseNewAddress(true);
+      }
+      setLoadingSaved(false);
+    };
+    load();
+  }, [open, user]);
+
   if (!open) return null;
+
+  // Active address: either a saved one or the new form
+  const activeAddress: ShippingAddress | null =
+    !useNewAddress && selectedSavedIdx !== null
+      ? savedAddresses[selectedSavedIdx]
+      : address;
 
   const field = (key: keyof ShippingAddress) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setAddress((prev) => ({ ...prev, [key]: e.target.value }));
 
-  const validate = (): string | null => {
-    if (!address.fullName.trim()) return "Full name is required";
-    if (!/^[6-9]\d{9}$/.test(address.phone)) return "Enter a valid 10-digit mobile number";
-    if (!address.street.trim()) return "Street address is required";
-    if (!address.city.trim()) return "City is required";
-    if (!address.state) return "Please select a state";
-    if (!/^\d{6}$/.test(address.pincode)) return "Enter a valid 6-digit pincode";
+  const validate = (addr: ShippingAddress): string | null => {
+    if (!addr.fullName.trim()) return "Full name is required";
+    if (!/^[6-9]\d{9}$/.test(addr.phone)) return "Enter a valid 10-digit mobile number";
+    if (!addr.street.trim()) return "Street address is required";
+    if (!addr.city.trim()) return "City is required";
+    if (!addr.state) return "Please select a state";
+    if (!/^\d{6}$/.test(addr.pincode)) return "Enter a valid 6-digit pincode";
     return null;
   };
 
   const handlePay = () => {
-    const err = validate();
+    if (!activeAddress) { toast({ title: "Please select or enter a delivery address", variant: "destructive" }); return; }
+    const err = validate(activeAddress);
     if (err) { toast({ title: err, variant: "destructive" }); return; }
 
-    const addressLine = `${address.fullName}\n${address.phone}\n${address.street}, ${address.city}, ${address.state} - ${address.pincode}`;
+    const addressLine = `${activeAddress.fullName}\n${activeAddress.phone}\n${activeAddress.street}, ${activeAddress.city}, ${activeAddress.state} - ${activeAddress.pincode}`;
     const itemsSummary = items
       .map((i) => `${i.name}${i.selectedSize ? ` (${i.selectedSize})` : ""} × ${i.cartQuantity} = ₹${(i.price * i.cartQuantity).toLocaleString("en-IN")}`)
       .join("\n");
@@ -67,21 +110,19 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       currency: "INR",
       name: "Urban Dhage",
       description: `Order of ${items.length} item(s)`,
-      prefill: { name: address.fullName, email: userEmail, contact: address.phone },
+      prefill: { name: activeAddress.fullName, email: userEmail, contact: activeAddress.phone },
       notes: { delivery_address: addressLine },
       theme: { color: "#7c3aed" },
       handler: async (response: any) => {
         setPaying(true);
         const now = Date.now();
-
         try {
-          // Save order to Firestore
           const orderRef = await addDoc(collection(db, "orders"), {
-            customerName:  address.fullName,
+            customerName:  activeAddress.fullName,
             customerEmail: userEmail,
             paymentId:     response.razorpay_payment_id,
             amount:        totalPrice,
-            address,
+            address:       activeAddress,
             items: items.map((i) => ({
               name:         i.name,
               price:        i.price,
@@ -94,13 +135,9 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
             updatedAt:     now,
             statusHistory: [{ status: "order_placed", timestamp: now }],
           });
-
-          // Write orderId back onto the document
           await updateDoc(orderRef, { orderId: orderRef.id });
-
-          // Send confirmation emails
           await sendOrderEmails({
-            customerName:  address.fullName,
+            customerName:  activeAddress.fullName,
             customerEmail: userEmail,
             paymentId:     response.razorpay_payment_id,
             amount:        totalPrice,
@@ -110,14 +147,13 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         } catch (err) {
           console.error("Post-payment error:", err);
         }
-
         clearCart();
         onClose();
         navigate("/order-confirmation", {
           state: {
             paymentId: response.razorpay_payment_id,
             amount:    totalPrice,
-            address,
+            address:   activeAddress,
             items: items.map((i) => ({
               name: i.name, cartQuantity: i.cartQuantity,
               price: i.price, selectedSize: i.selectedSize,
@@ -150,51 +186,126 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-3 max-h-[65vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
 
-            <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Full Name *</label>
-              <Input placeholder="Priya Sharma" value={address.fullName} onChange={field("fullName")} />
+          {/* ── Saved addresses ─────────────────────────────────────────── */}
+          {loadingSaved && (
+            <div className="space-y-2">
+              <div className="h-16 animate-pulse rounded-xl bg-muted" />
+              <div className="h-16 animate-pulse rounded-xl bg-muted" />
             </div>
+          )}
 
-            <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mobile Number *</label>
-              <Input placeholder="9876543210" maxLength={10} value={address.phone} onChange={field("phone")} />
-            </div>
+          {!loadingSaved && savedAddresses.length > 0 && (
+            <div className="space-y-2">
+              <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Saved Addresses
+              </p>
 
-            <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Street Address *</label>
-              <Input placeholder="House no., Street, Area, Landmark" value={address.street} onChange={field("street")} />
-            </div>
+              {savedAddresses.map((addr, idx) => (
+                <label
+                  key={idx}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition-colors ${
+                    !useNewAddress && selectedSavedIdx === idx
+                      ? "border-primary/40 bg-primary/[0.03]"
+                      : "border-border hover:border-border/80 hover:bg-muted/20"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="address-select"
+                    className="mt-0.5 accent-primary"
+                    checked={!useNewAddress && selectedSavedIdx === idx}
+                    onChange={() => { setSelectedSavedIdx(idx); setUseNewAddress(false); }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-body text-sm font-semibold text-foreground">{addr.fullName}</p>
+                      {idx === 0 && (
+                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 font-body text-[10px] font-semibold text-primary">
+                          Default
+                        </span>
+                      )}
+                    </div>
+                    <p className="font-body text-xs text-muted-foreground">{addr.phone}</p>
+                    <p className="mt-0.5 font-body text-xs leading-relaxed text-muted-foreground">
+                      {addr.street}, {addr.city}, {addr.state} — {addr.pincode}
+                    </p>
+                  </div>
+                  {!useNewAddress && selectedSavedIdx === idx && (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                  )}
+                </label>
+              ))}
 
-            <div className="space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">City *</label>
-              <Input placeholder="Lucknow" value={address.city} onChange={field("city")} />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pincode *</label>
-              <Input placeholder="226001" maxLength={6} value={address.pincode} onChange={field("pincode")} />
-            </div>
-
-            <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">State *</label>
-              <select
-                value={address.state}
-                onChange={field("state")}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              {/* Use new address toggle */}
+              <label
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 transition-colors ${
+                  useNewAddress
+                    ? "border-primary/40 bg-primary/[0.03]"
+                    : "border-border hover:border-border/80 hover:bg-muted/20"
+                }`}
               >
-                <option value="">Select state</option>
-                {INDIAN_STATES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+                <input
+                  type="radio"
+                  name="address-select"
+                  className="accent-primary"
+                  checked={useNewAddress}
+                  onChange={() => setUseNewAddress(true)}
+                />
+                <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-body text-sm font-medium text-foreground">Use a different address</span>
+              </label>
             </div>
+          )}
 
-          </div>
+          {/* ── New address form ─────────────────────────────────────────── */}
+          {(useNewAddress || savedAddresses.length === 0) && !loadingSaved && (
+            <div className="grid grid-cols-2 gap-3">
+              {savedAddresses.length > 0 && (
+                <p className="col-span-2 font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  New Address
+                </p>
+              )}
 
-          <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2 mt-2">
+              <div className="col-span-2 space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Full Name *</label>
+                <Input placeholder="Priya Sharma" value={address.fullName} onChange={field("fullName")} />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mobile Number *</label>
+                <Input placeholder="9876543210" maxLength={10} value={address.phone} onChange={field("phone")} />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Street Address *</label>
+                <Input placeholder="House no., Street, Area, Landmark" value={address.street} onChange={field("street")} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">City *</label>
+                <Input placeholder="Lucknow" value={address.city} onChange={field("city")} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pincode *</label>
+                <Input placeholder="226001" maxLength={6} value={address.pincode} onChange={field("pincode")} />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">State *</label>
+                <select
+                  value={address.state}
+                  onChange={field("state")}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Select state</option>
+                  {INDIAN_STATES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* ── Order summary ─────────────────────────────────────────────── */}
+          <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order Summary</p>
             {items.map((item) => (
               <div key={`${item.id}-${item.selectedSize}`} className="flex justify-between text-sm">
