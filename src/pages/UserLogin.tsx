@@ -15,21 +15,25 @@ const GoogleIcon = () => (
   </svg>
 );
 
-// Same check as AuthContext — user-agent based, not screen size
+// User-agent based — matches AuthContext
 const isMobileDevice = () =>
-  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  );
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+// ── Shared class applied to every <Input> ─────────────────────────────────────
+// iOS Safari auto-zooms when a focused input has font-size < 16px.
+// `text-base` (16px) on mobile prevents the zoom; `sm:text-sm` (14px) restores
+// the smaller visual size on wider screens where zoom isn't an issue.
+const INPUT_CLS = "text-base sm:text-sm touch-manipulation";
 
 const UserLogin = () => {
-  const [isSignup, setIsSignup]             = useState(false);
-  const [email, setEmail]                   = useState("");
-  const [password, setPassword]             = useState("");
+  const [isSignup, setIsSignup] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword]     = useState(false);
-  const [isLoading, setIsLoading]           = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [showReset, setShowReset]           = useState(false);
+  const [showReset, setShowReset] = useState(false);
 
   const { login, signup, loginWithGoogle, resetPassword } = useAuth();
   const navigate = useNavigate();
@@ -39,21 +43,15 @@ const UserLogin = () => {
     setIsGoogleLoading(true);
     try {
       await loginWithGoogle();
-
       if (isMobileDevice()) {
-        // On mobile, loginWithGoogle() triggers a page redirect to Google.
-        // The page navigates away here — we never reach the lines below on mobile.
-        // The user will return to the app and AuthContext handles the result.
-        // We keep the spinner showing (page is navigating away anyway).
+        // Redirect flow — page navigates away, spinner stays visible
         return;
       }
-
-      // Desktop only: popup resolves immediately
+      // Desktop popup resolves immediately
       toast({ title: "Welcome! 👋", description: "Signed in with Google." });
       navigate("/");
     } catch (error: any) {
       const code = error?.code || "";
-      // Don't show an error toast if user just closed the popup
       if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
         toast({
           title: "Google sign-in failed",
@@ -63,9 +61,6 @@ const UserLogin = () => {
       }
       setIsGoogleLoading(false);
     }
-    // Note: don't setIsGoogleLoading(false) in finally on mobile —
-    // if we get here on desktop, the catch above already handles it,
-    // and the navigate("/") causes unmount. On mobile the page navigates away.
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,10 +86,10 @@ const UserLogin = () => {
     } catch (error: any) {
       const code = error?.code || "";
       let message = "Something went wrong. Please try again.";
-      if (code === "auth/email-already-in-use")       message = "This email is already registered. Try signing in.";
+      if (code === "auth/email-already-in-use") message = "This email is already registered. Try signing in.";
       else if (code === "auth/invalid-credential" || code === "auth/wrong-password") message = "Invalid email or password.";
-      else if (code === "auth/user-not-found")         message = "No account found with this email.";
-      else if (code === "auth/too-many-requests")      message = "Too many attempts. Please try again later.";
+      else if (code === "auth/user-not-found") message = "No account found with this email.";
+      else if (code === "auth/too-many-requests") message = "Too many attempts. Please try again later.";
       toast({ title: isSignup ? "Signup failed" : "Login failed", description: message, variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -119,6 +114,8 @@ const UserLogin = () => {
     }
   };
 
+  // ── Password reset view ───────────────────────────────────────────────────
+
   if (showReset) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -129,6 +126,7 @@ const UserLogin = () => {
             </h1>
             <p className="mt-2 font-body text-sm text-muted-foreground">Reset your password</p>
           </div>
+
           <form onSubmit={handleReset} className="space-y-4">
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -137,14 +135,18 @@ const UserLogin = () => {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="pl-10"
+                // iOS zoom fix: 16px on mobile, 14px on sm+
+                className={`pl-10 font-body ${INPUT_CLS}`}
                 required
               />
             </div>
             <Button type="submit" className="w-full rounded-full" disabled={isLoading}>
-              {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...</> : "Send Reset Link"}
+              {isLoading
+                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...</>
+                : "Send Reset Link"}
             </Button>
           </form>
+
           <button
             onClick={() => setShowReset(false)}
             className="mx-auto flex items-center gap-1 font-body text-sm text-muted-foreground hover:text-foreground"
@@ -155,6 +157,8 @@ const UserLogin = () => {
       </div>
     );
   }
+
+  // ── Main login / signup view ──────────────────────────────────────────────
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -198,8 +202,9 @@ const UserLogin = () => {
           <div className="h-px flex-1 bg-border" />
         </div>
 
-        {/* Email form */}
+        {/* Email / password form */}
         <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Email */}
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -207,10 +212,12 @@ const UserLogin = () => {
               placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="pl-10 font-body"
+              className={`pl-10 font-body ${INPUT_CLS}`}
               required
             />
           </div>
+
+          {/* Password */}
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -218,7 +225,7 @@ const UserLogin = () => {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-10 pr-10 font-body"
+              className={`pl-10 pr-10 font-body ${INPUT_CLS}`}
               required
             />
             <button
@@ -229,6 +236,8 @@ const UserLogin = () => {
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+
+          {/* Confirm password (signup only) */}
           {isSignup && (
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -237,11 +246,12 @@ const UserLogin = () => {
                 placeholder="Confirm password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="pl-10 font-body"
+                className={`pl-10 font-body ${INPUT_CLS}`}
                 required
               />
             </div>
           )}
+
           <Button
             type="submit"
             className="w-full rounded-full font-body"
@@ -249,8 +259,7 @@ const UserLogin = () => {
           >
             {isLoading
               ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Please wait...</>
-              : isSignup ? "Create Account" : "Sign In"
-            }
+              : isSignup ? "Create Account" : "Sign In"}
           </Button>
         </form>
 
