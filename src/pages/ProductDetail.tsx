@@ -206,7 +206,7 @@ const ProductDetail = () => {
     <button
       onClick={handleToggleWishlist}
       aria-label={wishlisted ? "Remove from wishlist" : "Save to wishlist"}
-      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border transition-all duration-200
+      className={`flex aspect-square shrink-0 items-center justify-center rounded-full border py-6 px-6 transition-all duration-200
         ${wishlisted ? "border-rose-400 bg-rose-50 text-rose-500 dark:bg-rose-950/30" : "border-border bg-background text-muted-foreground hover:border-rose-300 hover:text-rose-400"}
         ${wishlistPop ? "scale-110" : "scale-100"} ${className}`}
     >
