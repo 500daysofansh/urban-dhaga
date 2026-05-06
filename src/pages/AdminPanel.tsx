@@ -339,7 +339,7 @@ const AdminPanel = () => {
 
             {showForm && (
               <div className="mb-8 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-                <div className="flex items-center justify-between border-b border-border bg-muted/30 px-6 py-4">
+                <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-4 sm:px-6">
                   <h3 className="font-heading text-base font-semibold text-foreground">
                     {editingId ? "Edit Product" : "New Product"}
                   </h3>
@@ -351,13 +351,14 @@ const AdminPanel = () => {
                   </button>
                 </div>
 
-                <div className="space-y-6 p-6">
+                <div className="space-y-6 p-4 sm:p-6">
+                  {/* Meesho import */}
                   <div className={`rounded-xl border-2 border-dashed p-4 transition-colors ${
                     importStatus === "success" ? "border-green-400 bg-green-50/50"
                     : importStatus === "error" ? "border-red-300 bg-red-50/50"
                     : "border-primary/30 bg-primary/5"
                   }`}>
-                    <div className="mb-3 flex items-center gap-2">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
                       <Link2 className="h-4 w-4 text-primary" />
                       <p className="font-body text-sm font-semibold text-foreground">Import from Meesho</p>
                       {importStatus === "success" && (
@@ -406,7 +407,7 @@ const AdminPanel = () => {
 
                     <div className="space-y-1">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Cost Price (₹) <span className="normal-case font-normal text-muted-foreground/70">— your buying price</span>
+                        Cost Price (₹) <span className="normal-case font-normal text-muted-foreground/70">— buying price</span>
                       </label>
                       <Input
                         placeholder="Auto-filled from Meesho"
@@ -431,8 +432,9 @@ const AdminPanel = () => {
                       />
                     </div>
 
+                    {/* FIX: added flex-wrap so it doesn't overflow on narrow screens */}
                     {form.costPrice > 0 && form.price > 0 && (
-                      <div className={`sm:col-span-2 flex items-center gap-2 rounded-lg px-4 py-2.5 font-body text-sm ${
+                      <div className={`sm:col-span-2 flex flex-wrap items-center gap-2 rounded-lg px-4 py-2.5 font-body text-sm ${
                         margin > 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"
                       }`}>
                         <TrendingUp className="h-4 w-4 shrink-0" />
@@ -448,7 +450,7 @@ const AdminPanel = () => {
                       <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                         <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                         <SelectContent>
-                          {["Sarees", "Kurtas", "Dupattas", "Accessories", "Lehengas", "Jewellery","Western"].map((cat) => (
+                          {["Sarees", "Kurtas", "Dupattas", "Accessories", "Lehengas", "Jewellery", "Western"].map((cat) => (
                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                           ))}
                         </SelectContent>
@@ -519,7 +521,7 @@ const AdminPanel = () => {
                     <div className="flex items-center justify-between">
                       <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Images</label>
                       {form.images.length > 0 && (
-                        <span className="font-body text-xs text-muted-foreground">Click image to set as cover</span>
+                        <span className="font-body text-xs text-muted-foreground">Tap image to set as cover</span>
                       )}
                     </div>
                     <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-input px-4 py-2.5 font-body text-sm text-muted-foreground transition-colors hover:bg-accent">
@@ -529,10 +531,11 @@ const AdminPanel = () => {
                       }
                       <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploading} />
                     </label>
+                    {/* FIX: overflow-x-auto so thumbnails scroll rather than overflow */}
                     {form.images.length > 0 && (
-                      <div className="flex flex-wrap gap-3">
+                      <div className="flex gap-3 overflow-x-auto pb-1">
                         {form.images.map((url, idx) => (
-                          <div key={idx} className="group relative">
+                          <div key={idx} className="group relative shrink-0">
                             <img
                               src={url}
                               alt={`Image ${idx + 1}`}
@@ -559,7 +562,7 @@ const AdminPanel = () => {
                     )}
                   </div>
 
-                  <div className="flex gap-3 border-t border-border pt-4">
+                  <div className="flex flex-wrap gap-3 border-t border-border pt-4">
                     <Button onClick={handleSave} disabled={saving} className="min-w-[130px]">
                       {saving
                         ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
@@ -588,15 +591,15 @@ const AdminPanel = () => {
             ) : (
               <div className="grid gap-3">
                 {products.map((product) => (
-                  <div key={product.id} className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-sm">
+                  <div key={product.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-shadow hover:shadow-sm sm:gap-4 sm:p-4">
                     <img
                       src={product.image}
                       alt={product.name}
-                      className="h-16 w-16 rounded-lg object-cover shrink-0"
+                      className="h-14 w-14 rounded-lg object-cover shrink-0 sm:h-16 sm:w-16"
                       onError={(e) => { (e.target as HTMLImageElement).src = "https://placehold.co/64x64?text=No+Image"; }}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h4 className="truncate font-body font-semibold text-foreground">{product.name}</h4>
                         {product.meeshoUrl && (
                           <a
@@ -610,7 +613,8 @@ const AdminPanel = () => {
                           </a>
                         )}
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {/* FIX: flex-wrap so price/margin row wraps on small screens */}
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="font-body text-sm font-semibold text-foreground">₹{product.price}</span>
                         {product.costPrice && product.costPrice > 0 && (
                           <>
@@ -620,10 +624,10 @@ const AdminPanel = () => {
                             </span>
                           </>
                         )}
-                        <span className="text-muted-foreground">·</span>
-                        <span className="font-body text-sm text-muted-foreground">{product.category}</span>
-                        <span className="text-muted-foreground">·</span>
-                        <span className="font-body text-sm text-muted-foreground">Stock: {product.quantity || 0}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="font-body text-xs text-muted-foreground">{product.category}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="font-body text-xs text-muted-foreground">Stock: {product.quantity || 0}</span>
                         {(product.quantity || 0) <= 0 && (
                           <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-body text-xs font-medium text-destructive">Out of stock</span>
                         )}
@@ -644,9 +648,9 @@ const AdminPanel = () => {
           </>
         )}
 
-      {activeTab === "orders" && (
-  <OrdersPanel />
-)}
+        {activeTab === "orders" && (
+          <OrdersPanel />
+        )}
       </div>
     </div>
   );
