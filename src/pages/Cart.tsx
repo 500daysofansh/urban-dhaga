@@ -57,57 +57,71 @@ const Cart = () => {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
+          {/* Cart items */}
           <div className="space-y-4 lg:col-span-2">
             {items.map((item) => (
               <Card key={`${item.id}-${item.selectedSize || ""}`} className="overflow-hidden">
-                <CardContent className="flex gap-4 p-4">
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="h-24 w-24 rounded-lg object-cover"
-                  />
-                  <div className="flex flex-1 flex-col justify-between">
-                    <div>
-                      <h3 className="font-semibold text-foreground">{item.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {item.category}
-                        {item.selectedSize && (
-                          <span className="ml-2">· Size: {item.selectedSize}</span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => updateQuantity(item.id, -1, item.selectedSize)}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <span className="w-8 text-center text-sm font-medium">{item.cartQuantity}</span>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => updateQuantity(item.id, 1, item.selectedSize)}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex gap-3 sm:gap-4">
+                    {/* Product image */}
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="h-20 w-20 shrink-0 rounded-lg object-cover sm:h-24 sm:w-24"
+                    />
+
+                    {/* Details + controls */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-2">
+                      {/* Name + category */}
+                      <div className="min-w-0">
+                        <h3 className="truncate font-semibold text-foreground">{item.name}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {item.category}
+                          {item.selectedSize && (
+                            <span className="ml-2">· Size: {item.selectedSize}</span>
+                          )}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-semibold text-foreground">
-                          ₹{(item.price * item.cartQuantity).toLocaleString()}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeFromCart(item.id, item.selectedSize)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+
+                      {/* FIX: quantity stepper + price + delete on separate rows on mobile */}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        {/* Quantity stepper */}
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7 sm:h-8 sm:w-8"
+                            onClick={() => updateQuantity(item.id, -1, item.selectedSize)}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="w-7 text-center text-sm font-medium">
+                            {item.cartQuantity}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7 sm:h-8 sm:w-8"
+                            onClick={() => updateQuantity(item.id, 1, item.selectedSize)}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+
+                        {/* Price + delete */}
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">
+                            ₹{(item.price * item.cartQuantity).toLocaleString()}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive sm:h-8 sm:w-8"
+                            onClick={() => removeFromCart(item.id, item.selectedSize)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -116,8 +130,9 @@ const Cart = () => {
             ))}
           </div>
 
+          {/* Order summary */}
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <h3 className="mb-4 text-lg font-semibold text-foreground">Order Summary</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between text-muted-foreground">
