@@ -44,15 +44,15 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // ── FIX #2: isMobile as a ref, evaluated once on mount inside the component.
-  // This avoids the stale module-level constant that could be read before the
-  // DOM is ready, across HMR reloads, or in SSR environments.
-  const isMobile = useRef(false);
-  useEffect(() => {
-    isMobile.current = window.innerWidth < 768;
-  }, []);
+  // FIX: evaluate isMobile synchronously so the very first render already
+  // has the correct value. The old pattern (useRef(false) + useEffect) meant
+  // the first render always saw false, and because ref changes don't trigger
+  // re-renders the motion.div kept the desktop animation (opacity: 0 →
+  // whileInView), leaving cards invisible until they scrolled into view —
+  // which produced blank spaces in the mobile product grid.
+  const isMobile = useRef(typeof window !== "undefined" && window.innerWidth < 768);
 
-  // ── FIX #3: track whether a child interactive element was tapped/clicked.
+  // FIX: track whether a child interactive element was tapped/clicked.
   // On iOS, stopPropagation() on a touchend doesn't reliably cancel the
   // synthesised click that bubbles to the parent card div. Instead we set a
   // flag and gate the navigate() behind it.
@@ -136,7 +136,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const handleCardClick = () => {
     // If a child button (size, wishlist, add-to-cart) handled this interaction,
-    // absorb the event and reset the flag. This is the iOS fix (#3).
+    // absorb the event and reset the flag. This is the iOS fix.
     if (childInteractedRef.current) {
       childInteractedRef.current = false;
       return;
@@ -146,7 +146,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
-    childInteractedRef.current = true; // tell parent not to navigate
+    childInteractedRef.current = true;
     if (outOfStock) return;
     if (hasSizes && !selectedSize) {
       toast({ title: "Please select a size", variant: "destructive" });
@@ -161,7 +161,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const handleWishlist = (e: React.MouseEvent) => {
     e.stopPropagation();
-    childInteractedRef.current = true; // tell parent not to navigate
+    childInteractedRef.current = true;
     toggleWishlist(product);
     toast({
       title: wishlisted ? "Removed from wishlist" : "Added to wishlist",
@@ -172,7 +172,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const handleSizeClick = (e: React.MouseEvent, size: string) => {
     e.stopPropagation();
     e.preventDefault(); // belt-and-suspenders for iOS touch→click synthesis
-    childInteractedRef.current = true; // tell parent not to navigate
+    childInteractedRef.current = true;
     setSelectedSize((prev) => (prev === size ? undefined : size));
   };
 
