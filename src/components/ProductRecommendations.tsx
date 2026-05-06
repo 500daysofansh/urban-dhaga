@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { collection, getDocs, query, limit, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, limit, orderBy, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Product } from "@/types/product";
 import ProductCard from "@/components/ProductCard";
@@ -59,7 +59,6 @@ const HorizontalCarousel = ({ title, subtitle, products }: CarouselProps) => {
   const scroll = (dir: "left" | "right") => {
     const el = scrollRef.current;
     if (!el) return;
-    // Scroll by ~2 card widths
     el.scrollBy({ left: dir === "left" ? -360 : 360, behavior: "smooth" });
   };
 
@@ -107,8 +106,7 @@ const HorizontalCarousel = ({ title, subtitle, products }: CarouselProps) => {
       <div
         ref={scrollRef}
         className="
-          flex gap-3 overflow-x-auto
-          pb-3
+          flex gap-3 overflow-x-auto pb-3
           [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
           snap-x snap-mandatory
         "
@@ -160,7 +158,7 @@ const CarouselSkeleton = ({ title }: { title: string }) => (
 
 interface Props {
   currentProduct: Product;
-  /** IDs from useRecentlyViewed (newest-first, already includes current product) */
+  /** IDs from useRecentlyViewed (newest-first, includes current product) */
   recentlyViewedIds: string[];
 }
 
@@ -168,8 +166,9 @@ type LoadState = "idle" | "loading" | "done";
 
 const MAX_SIMILAR = 8;
 const MAX_RECENT = 8;
-// How many products to pull for similarity scoring (avoids full-collection scan)
-const POOL_SIZE = 60;
+// Each parallel pool query fetches this many docs
+const CATEGORY_POOL = 30; // same-category products (guaranteed in pool)
+const GENERAL_POOL  = 30; // alphabetical general fallback for diversity
 
 const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) => {
   const [similar, setSimilar] = useState<Product[]>([]);
@@ -177,28 +176,62 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
   const [similarState, setSimilarState] = useState<LoadState>("idle");
   const [recentState, setRecentState] = useState<LoadState>("idle");
 
-  // ── "You May Also Like": fetch a pool, score, sort, trim ─────────────────
+  // ── "You May Also Like": two parallel queries, merged + scored ────────────
+  //
+  // OLD: one orderBy("name") limit(60) — always the first 60 alphabetically.
+  //      Products deeper in the catalogue were never seen.
+  //
+  // NEW: two queries run in parallel:
+  //   1. where("category", "==", ...) limit(30) — guarantees same-category
+  //      products are in the pool regardless of their name/order in Firestore.
+  //   2. orderBy("name") limit(30) — general diversity fallback.
+  //
+  // Results are merged, deduplicated, scored, and the top MAX_SIMILAR shown.
+  // No extra Firestore composite index needed: query 1 is a single-field
+  // equality filter (no orderBy), query 2 is the existing name index.
   useEffect(() => {
     let cancelled = false;
     setSimilarState("loading");
 
     (async () => {
       try {
-        // Pull a pool ordered by name (deterministic, avoids needing an extra index)
-        const snap = await getDocs(
-          query(collection(db, "products"), orderBy("name"), limit(POOL_SIZE))
-        );
+        const [categorySnap, generalSnap] = await Promise.all([
+          // Query 1: all products in the same category (no orderBy = collection scan
+          // filtered server-side; fine for a bounded limit(30))
+          getDocs(
+            query(
+              collection(db, "products"),
+              where("category", "==", currentProduct.category),
+              limit(CATEGORY_POOL)
+            )
+          ),
+          // Query 2: general diversity pool ordered alphabetically
+          getDocs(
+            query(collection(db, "products"), orderBy("name"), limit(GENERAL_POOL))
+          ),
+        ]);
+
         if (cancelled) return;
 
-        const pool = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() } as Product))
-          // exclude the current product
+        // Merge both result sets, deduplicate by document id
+        const seen = new Set<string>();
+        const pool: Product[] = [];
+        for (const snap of [categorySnap, generalSnap]) {
+          for (const d of snap.docs) {
+            if (!seen.has(d.id)) {
+              seen.add(d.id);
+              pool.push({ id: d.id, ...d.data() } as Product);
+            }
+          }
+        }
+
+        // Filter out the current product and out-of-stock items
+        const candidates = pool
           .filter((p) => p.id !== currentProduct.id)
-          // must be in stock
           .filter((p) => p.inStock && p.quantity > 0);
 
-        // Score and sort
-        const scored = pool
+        // Score, sort by score desc then price asc, take top MAX_SIMILAR
+        const scored = candidates
           .map((p) => ({ p, score: similarity(currentProduct, p) }))
           .filter(({ score }) => score > 0)
           .sort((a, b) => b.score - a.score || a.price - b.price)
@@ -218,7 +251,6 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
 
   // ── "Recently Viewed": hydrate IDs → full Product objects ────────────────
   useEffect(() => {
-    // IDs to hydrate: exclude the current product, cap at MAX_RECENT
     const ids = recentlyViewedIds
       .filter((id) => id !== currentProduct.id)
       .slice(0, MAX_RECENT);
@@ -234,23 +266,20 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
 
     (async () => {
       try {
-        // Firestore doesn't support "in" queries > 10 docs in one shot, so batch if needed
+        // Firestore "in" filter supports max 10 values — batch if needed
         const BATCH = 10;
-        const { getDocs: _getDocs, query: _query, collection: _collection, where } =
-          await import("firebase/firestore");
-
         const batches: Product[][] = [];
         for (let i = 0; i < ids.length; i += BATCH) {
           const chunk = ids.slice(i, i + BATCH);
-          const snap = await _getDocs(
-            _query(_collection(db, "products"), where("__name__", "in", chunk))
+          const snap = await getDocs(
+            query(collection(db, "products"), where("__name__", "in", chunk))
           );
           batches.push(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product)));
         }
 
         if (cancelled) return;
 
-        // Re-order by the original ids array (most-recent first)
+        // Re-order by original ids array (most-recent first)
         const byId = new Map(batches.flat().map((p) => [p.id, p]));
         const ordered = ids.map((id) => byId.get(id)).filter(Boolean) as Product[];
         setRecentProducts(ordered);
@@ -265,9 +294,9 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
   }, [recentlyViewedIds, currentProduct.id]);
 
   const showSimilarSkeleton = similarState === "loading";
-  const showRecentSkeleton = recentState === "loading";
+  const showRecentSkeleton  = recentState === "loading";
 
-  // Nothing to show at all yet
+  // Render nothing if both are idle or both finished empty
   if (
     similarState === "idle" ||
     (similarState === "done" && similar.length === 0 &&
@@ -280,7 +309,6 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
     <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
       <div className="space-y-12">
 
-        {/* You May Also Like */}
         {showSimilarSkeleton ? (
           <CarouselSkeleton title="You May Also Like" />
         ) : similar.length > 0 ? (
@@ -291,7 +319,6 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
           />
         ) : null}
 
-        {/* Recently Viewed */}
         {showRecentSkeleton ? (
           <CarouselSkeleton title="Recently Viewed" />
         ) : recentProducts.length > 0 ? (
