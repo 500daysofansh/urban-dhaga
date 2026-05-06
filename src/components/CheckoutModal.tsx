@@ -14,7 +14,9 @@ import { useAuth } from "@/contexts/AuthContext";
 interface CheckoutModalProps {
   open: boolean;
   onClose: () => void;
-  userEmail: string;
+  // FIX: accept null so Cart.tsx can pass `user?.email ?? null`
+  // instead of `user?.email || ""` which silently passes an empty string
+  userEmail: string | null;
 }
 
 const DELIVERY_CHARGE = 60;
@@ -32,6 +34,8 @@ const empty: ShippingAddress = {
   fullName: "", phone: "", street: "", city: "", state: "", pincode: "",
 };
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
   const { items, totalPrice, clearCart } = useCart();
   const { toast } = useToast();
@@ -45,6 +49,14 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [paying, setPaying] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"online" | "cod">("online");
+
+  // FIX: when the Firebase user has no email (phone-auth / anonymous),
+  // we collect it manually. `emailOverride` holds what they type.
+  const [emailOverride, setEmailOverride] = useState("");
+
+  // The single source of truth for the email we'll actually use.
+  const needsEmailInput = !userEmail;
+  const resolvedEmail = userEmail ?? emailOverride.trim();
 
   const finalAmount = totalPrice + DELIVERY_CHARGE;
 
@@ -108,6 +120,16 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       return;
     }
 
+    // FIX: validate email before attempting to send — catches both the
+    // phone-auth case (no email at all) and any edge-case empty string.
+    if (!resolvedEmail || !EMAIL_RE.test(resolvedEmail)) {
+      toast({
+        title: "Please enter a valid email address for your order confirmation",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const addressLine = `${activeAddress.fullName}\n${activeAddress.phone}\n${activeAddress.street}, ${activeAddress.city}, ${activeAddress.state} - ${activeAddress.pincode}`;
     const itemsSummary = items
       .map((i) => `${i.name}${i.selectedSize ? ` (${i.selectedSize})` : ""} × ${i.cartQuantity} = ₹${(i.price * i.cartQuantity).toLocaleString("en-IN")}`)
@@ -120,7 +142,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       try {
         const orderRef = await addDoc(collection(db, "orders"), {
           customerName: activeAddress.fullName,
-          customerEmail: userEmail,
+          customerEmail: resolvedEmail, // FIX: was `userEmail` (could be "")
           paymentId: "COD",
           amount: finalAmount,
           deliveryCharge: DELIVERY_CHARGE,
@@ -141,7 +163,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         await updateDoc(orderRef, { orderId: orderRef.id });
         await sendOrderEmails({
           customerName: activeAddress.fullName,
-          customerEmail: userEmail,
+          customerEmail: resolvedEmail, // FIX: was `userEmail` (could be "")
           paymentId: "COD",
           amount: finalAmount,
           addressLine,
@@ -178,7 +200,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       currency: "INR",
       name: "Urban Dhage",
       description: `Order of ${items.length} item(s)`,
-      prefill: { name: activeAddress.fullName, email: userEmail, contact: activeAddress.phone },
+      prefill: { name: activeAddress.fullName, email: resolvedEmail, contact: activeAddress.phone }, // FIX
       notes: { delivery_address: addressLine },
       theme: { color: "#7c3aed" },
       handler: async (response: any) => {
@@ -187,7 +209,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         try {
           const orderRef = await addDoc(collection(db, "orders"), {
             customerName: activeAddress.fullName,
-            customerEmail: userEmail,
+            customerEmail: resolvedEmail, // FIX: was `userEmail` (could be "")
             paymentId: response.razorpay_payment_id,
             amount: finalAmount,
             deliveryCharge: DELIVERY_CHARGE,
@@ -208,7 +230,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
           await updateDoc(orderRef, { orderId: orderRef.id });
           await sendOrderEmails({
             customerName: activeAddress.fullName,
-            customerEmail: userEmail,
+            customerEmail: resolvedEmail, // FIX: was `userEmail` (could be "")
             paymentId: response.razorpay_payment_id,
             amount: finalAmount,
             addressLine,
@@ -374,6 +396,24 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+
+          {/* ── FIX: Email input — only shown when Firebase user has no email
+               (e.g. signed in via phone / OTP). Skipped for email-auth users. ── */}
+          {needsEmailInput && !loadingSaved && (
+            <div className="space-y-1">
+              <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Email Address * <span className="normal-case font-normal">(for order confirmation)</span>
+              </label>
+              <Input
+                type="email"
+                placeholder="you@example.com"
+                value={emailOverride}
+                onChange={(e) => setEmailOverride(e.target.value)}
+                inputMode="email"
+                autoComplete="email"
+              />
             </div>
           )}
 
