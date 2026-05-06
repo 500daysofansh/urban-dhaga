@@ -14,9 +14,9 @@ import { useAuth } from "@/contexts/AuthContext";
 interface CheckoutModalProps {
   open: boolean;
   onClose: () => void;
-  // FIX: accept null so Cart.tsx can pass `user?.email ?? null`
-  // instead of `user?.email || ""` which silently passes an empty string
-  userEmail: string | null;
+  // kept for API compatibility — email is now resolved internally from useAuth()
+  // so stale/empty values from Cart.tsx can never reach EmailJS.
+  userEmail?: string | null;
 }
 
 const DELIVERY_CHARGE = 60;
@@ -36,7 +36,7 @@ const empty: ShippingAddress = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
+const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
   const { items, totalPrice, clearCart } = useCart();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -50,13 +50,13 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
   const [paying, setPaying] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"online" | "cod">("online");
 
-  // FIX: when the Firebase user has no email (phone-auth / anonymous),
-  // we collect it manually. `emailOverride` holds what they type.
+  // Read email directly from auth context — never trust the prop,
+  // which arrives as "" when user.email is null (phone-auth / OTP users).
+  const authEmail = user?.email ?? "";
+  const needsEmailInput = !authEmail || !EMAIL_RE.test(authEmail);
   const [emailOverride, setEmailOverride] = useState("");
-
-  // The single source of truth for the email we'll actually use.
-  const needsEmailInput = !userEmail;
-  const resolvedEmail = userEmail ?? emailOverride.trim();
+  const resolvedEmail = needsEmailInput ? emailOverride.trim() : authEmail;
+  const emailValid = EMAIL_RE.test(resolvedEmail);
 
   const finalAmount = totalPrice + DELIVERY_CHARGE;
 
@@ -110,6 +110,13 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
   };
 
   const handlePay = async () => {
+    // Hard guard — button is also disabled when !emailValid, but
+    // this is a final safety net before touching Firestore or EmailJS.
+    if (!emailValid) {
+      toast({ title: "Please enter a valid email address for order confirmation", variant: "destructive" });
+      return;
+    }
+
     if (!activeAddress) {
       toast({ title: "Please select or enter a delivery address", variant: "destructive" });
       return;
@@ -117,16 +124,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
     const err = validate(activeAddress);
     if (err) {
       toast({ title: err, variant: "destructive" });
-      return;
-    }
-
-    // FIX: validate email before attempting to send — catches both the
-    // phone-auth case (no email at all) and any edge-case empty string.
-    if (!resolvedEmail || !EMAIL_RE.test(resolvedEmail)) {
-      toast({
-        title: "Please enter a valid email address for your order confirmation",
-        variant: "destructive",
-      });
       return;
     }
 
@@ -142,7 +139,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       try {
         const orderRef = await addDoc(collection(db, "orders"), {
           customerName: activeAddress.fullName,
-          customerEmail: resolvedEmail, // FIX: was `userEmail` (could be "")
+          customerEmail: resolvedEmail,
           paymentId: "COD",
           amount: finalAmount,
           deliveryCharge: DELIVERY_CHARGE,
@@ -163,7 +160,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         await updateDoc(orderRef, { orderId: orderRef.id });
         await sendOrderEmails({
           customerName: activeAddress.fullName,
-          customerEmail: resolvedEmail, // FIX: was `userEmail` (could be "")
+          customerEmail: resolvedEmail,
           paymentId: "COD",
           amount: finalAmount,
           addressLine,
@@ -200,7 +197,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       currency: "INR",
       name: "Urban Dhage",
       description: `Order of ${items.length} item(s)`,
-      prefill: { name: activeAddress.fullName, email: resolvedEmail, contact: activeAddress.phone }, // FIX
+      prefill: { name: activeAddress.fullName, email: resolvedEmail, contact: activeAddress.phone },
       notes: { delivery_address: addressLine },
       theme: { color: "#7c3aed" },
       handler: async (response: any) => {
@@ -209,7 +206,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         try {
           const orderRef = await addDoc(collection(db, "orders"), {
             customerName: activeAddress.fullName,
-            customerEmail: resolvedEmail, // FIX: was `userEmail` (could be "")
+            customerEmail: resolvedEmail,
             paymentId: response.razorpay_payment_id,
             amount: finalAmount,
             deliveryCharge: DELIVERY_CHARGE,
@@ -230,7 +227,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
           await updateDoc(orderRef, { orderId: orderRef.id });
           await sendOrderEmails({
             customerName: activeAddress.fullName,
-            customerEmail: resolvedEmail, // FIX: was `userEmail` (could be "")
+            customerEmail: resolvedEmail,
             paymentId: response.razorpay_payment_id,
             amount: finalAmount,
             addressLine,
@@ -283,6 +280,36 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
 
         {/* Scrollable body */}
         <div className="px-4 py-5 space-y-5 max-h-[60vh] overflow-y-auto sm:px-6 sm:max-h-[65vh]">
+
+          {/* ── Email input — rendered FIRST so it's always visible at the top.
+               Only shown for phone-auth users whose account has no email.   ── */}
+          {needsEmailInput && !loadingSaved && (
+            <div className="space-y-2">
+              <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Contact
+              </p>
+              <div className="space-y-1">
+                <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Email Address *{" "}
+                  <span className="normal-case font-normal text-muted-foreground/70">
+                    (for order confirmation)
+                  </span>
+                </label>
+                <Input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={emailOverride}
+                  onChange={(e) => setEmailOverride(e.target.value)}
+                  inputMode="email"
+                  autoComplete="email"
+                  className={emailOverride && !emailValid ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {emailOverride && !emailValid && (
+                  <p className="font-body text-xs text-destructive">Please enter a valid email address</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── Saved addresses ── */}
           {loadingSaved && (
@@ -399,24 +426,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
             </div>
           )}
 
-          {/* ── FIX: Email input — only shown when Firebase user has no email
-               (e.g. signed in via phone / OTP). Skipped for email-auth users. ── */}
-          {needsEmailInput && !loadingSaved && (
-            <div className="space-y-1">
-              <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Email Address * <span className="normal-case font-normal">(for order confirmation)</span>
-              </label>
-              <Input
-                type="email"
-                placeholder="you@example.com"
-                value={emailOverride}
-                onChange={(e) => setEmailOverride(e.target.value)}
-                inputMode="email"
-                autoComplete="email"
-              />
-            </div>
-          )}
-
           {/* ── Payment Method ── */}
           <div className="space-y-2">
             <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -499,9 +508,14 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
 
         </div>
 
-        {/* CTA */}
+        {/* CTA — disabled until email is confirmed valid */}
         <div className="px-4 py-4 border-t border-border sm:px-6">
-          <Button className="w-full rounded-full text-base py-5 gap-2" onClick={handlePay} disabled={paying}>
+          <Button
+            className="w-full rounded-full text-base py-5 gap-2"
+            onClick={handlePay}
+            disabled={paying || !emailValid}
+            title={!emailValid ? "Enter your email address above to continue" : undefined}
+          >
             {paying ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
             ) : paymentMethod === "cod" ? (
@@ -510,6 +524,11 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
               `Pay ₹${finalAmount.toLocaleString("en-IN")} →`
             )}
           </Button>
+          {needsEmailInput && !emailValid && (
+            <p className="mt-2 text-center font-body text-xs text-muted-foreground">
+              Enter your email above to continue
+            </p>
+          )}
         </div>
 
       </div>
