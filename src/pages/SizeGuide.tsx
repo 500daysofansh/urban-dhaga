@@ -28,14 +28,14 @@ const SizeGuide = () => {
         <div className="space-y-8">
 
           {/* How to measure */}
-          <div className="rounded-2xl border border-border bg-card p-6">
+          <div className="rounded-2xl border border-border bg-card p-4 sm:p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="rounded-xl bg-primary/10 p-2.5">
                 <Ruler className="h-5 w-5 text-primary" />
               </div>
               <h2 className="font-heading text-lg font-semibold text-foreground">How to Measure</h2>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3 font-body text-sm text-muted-foreground">
+            <div className="grid gap-3 sm:grid-cols-3 font-body text-sm text-muted-foreground">
               <div className="rounded-xl bg-muted/40 p-4">
                 <p className="font-semibold text-foreground mb-1">Chest</p>
                 <p>Measure around the fullest part of your chest, keeping the tape parallel to the floor.</p>
@@ -53,29 +53,32 @@ const SizeGuide = () => {
 
           {/* Size table */}
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="border-b border-border bg-muted/30 px-6 py-4">
+            <div className="border-b border-border bg-muted/30 px-4 py-4 sm:px-6">
               <h2 className="font-heading text-lg font-semibold text-foreground">Women's Size Chart</h2>
-              <p className="font-body text-xs text-muted-foreground mt-0.5">All measurements in inches</p>
+              <p className="font-body text-xs text-muted-foreground mt-0.5">All measurements in inches · scroll sideways if needed</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full font-body text-sm">
+              <table className="w-full min-w-[380px] font-body text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/20">
-                    <th className="px-6 py-3 text-left font-semibold text-foreground">Size</th>
-                    <th className="px-6 py-3 text-left font-semibold text-foreground">Chest</th>
-                    <th className="px-6 py-3 text-left font-semibold text-foreground">Waist</th>
-                    <th className="px-6 py-3 text-left font-semibold text-foreground">Hips</th>
-                    <th className="px-6 py-3 text-left font-semibold text-foreground">Fits (inches)</th>
+                    <th className="px-3 py-3 text-left font-semibold text-foreground sm:px-6">Size</th>
+                    <th className="px-3 py-3 text-left font-semibold text-foreground sm:px-6">Chest</th>
+                    <th className="px-3 py-3 text-left font-semibold text-foreground sm:px-6">Waist</th>
+                    <th className="px-3 py-3 text-left font-semibold text-foreground sm:px-6">Hips</th>
+                    <th className="px-3 py-3 text-left font-semibold text-foreground sm:px-6">Fits&nbsp;(in)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sizes.map((row, idx) => (
-                    <tr key={row.size} className={`border-b border-border last:border-0 ${idx % 2 === 0 ? "" : "bg-muted/10"}`}>
-                      <td className="px-6 py-3 font-semibold text-primary">{row.size}</td>
-                      <td className="px-6 py-3 text-muted-foreground">{row.chest}"</td>
-                      <td className="px-6 py-3 text-muted-foreground">{row.waist}"</td>
-                      <td className="px-6 py-3 text-muted-foreground">{row.hips}"</td>
-                      <td className="px-6 py-3 text-muted-foreground">{row.fits}"</td>
+                    <tr
+                      key={row.size}
+                      className={`border-b border-border last:border-0 ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
+                    >
+                      <td className="px-3 py-3 font-semibold text-primary sm:px-6">{row.size}</td>
+                      <td className="px-3 py-3 text-muted-foreground sm:px-6">{row.chest}"</td>
+                      <td className="px-3 py-3 text-muted-foreground sm:px-6">{row.waist}"</td>
+                      <td className="px-3 py-3 text-muted-foreground sm:px-6">{row.hips}"</td>
+                      <td className="px-3 py-3 text-muted-foreground sm:px-6">{row.fits}"</td>
                     </tr>
                   ))}
                 </tbody>
@@ -84,16 +87,16 @@ const SizeGuide = () => {
           </div>
 
           {/* Saree note */}
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 flex gap-3">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 sm:p-5 flex gap-3">
             <Info className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
             <div className="font-body text-sm text-muted-foreground">
-              <p className="font-semibold text-foreground mb-1">Note on Sarees & Dupattas</p>
+              <p className="font-semibold text-foreground mb-1">Note on Sarees &amp; Dupattas</p>
               <p>Sarees are free size (typically 5.5 metres) and fit all body types. Dupattas are also free size. Blouses and stitched pieces follow the size chart above.</p>
             </div>
           </div>
 
           {/* Tips */}
-          <div className="rounded-2xl border border-border bg-card p-6">
+          <div className="rounded-2xl border border-border bg-card p-4 sm:p-6">
             <h2 className="font-heading text-base font-semibold text-foreground mb-3">Sizing Tips</h2>
             <ul className="space-y-2 font-body text-sm text-muted-foreground">
               <li>• If you're between sizes, we recommend sizing up for a comfortable fit.</li>
