@@ -29,7 +29,6 @@ const StarRating = ({ rating, count }: { rating: number; count: number }) => (
   </div>
 );
 
-const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 const SLIDE_INTERVAL = 2200;
 
 const ProductCard = ({ product, priority = false }: ProductCardProps) => {
@@ -41,11 +40,25 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const wishlisted = isWishlisted(product.id);
+  // ── FIX #2: isMobile as a ref, evaluated once on mount inside the component.
+  // This avoids the stale module-level constant that could be read before the
+  // DOM is ready, across HMR reloads, or in SSR environments.
+  const isMobile = useRef(false);
+  useEffect(() => {
+    isMobile.current = window.innerWidth < 768;
+  }, []);
 
+  // ── FIX #3: track whether a child interactive element was tapped/clicked.
+  // On iOS, stopPropagation() on a touchend doesn't reliably cancel the
+  // synthesised click that bubbles to the parent card div. Instead we set a
+  // flag and gate the navigate() behind it.
+  const childInteractedRef = useRef(false);
+
+  const wishlisted = isWishlisted(product.id);
   const allImages = product.images?.length > 0 ? product.images : [product.image];
   const isJewelry = JEWELRY_CATEGORIES.some(
     (c) => c.toLowerCase() === product.category.toLowerCase()
@@ -72,9 +85,9 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     [allImages]
   );
 
-  // ── Mobile: auto-slideshow ─────────────────────────────────────────────────
+  // ── Mobile: intersection-observer-gated auto-slideshow ────────────────────
   useEffect(() => {
-    if (!isMobile || !hasMultiple) return;
+    if (!isMobile.current || !hasMultiple) return;
     const card = cardRef.current;
     if (!card) return;
 
@@ -84,6 +97,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
         setActiveIdx((prev) => (prev + 1) % allImages.length);
       }, SLIDE_INTERVAL);
     };
+
     const stopSlide = () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -98,12 +112,13 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
       },
       { threshold: 0.4 }
     );
+
     observer.observe(card);
     return () => { observer.disconnect(); stopSlide(); };
-  }, [isMobile, hasMultiple, allImages.length]);
+  }, [hasMultiple, allImages.length]);
 
   const handleMouseEnter = () => {
-    if (isMobile) return;
+    if (isMobile.current) return;
     setIsHovered(true);
     if (hasMultiple) {
       const img = new Image();
@@ -111,14 +126,27 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     }
   };
 
-  const displayImage = isMobile
+  const displayImage = isMobile.current
     ? optimizedImages[activeIdx] ?? optimizedImages[0]
     : isHovered && hasMultiple
     ? optimizedImages[1]
     : optimizedImages[0];
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleCardClick = () => {
+    // If a child button (size, wishlist, add-to-cart) handled this interaction,
+    // absorb the event and reset the flag. This is the iOS fix (#3).
+    if (childInteractedRef.current) {
+      childInteractedRef.current = false;
+      return;
+    }
+    navigate(`/product/${product.id}`);
+  };
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
+    childInteractedRef.current = true; // tell parent not to navigate
     if (outOfStock) return;
     if (hasSizes && !selectedSize) {
       toast({ title: "Please select a size", variant: "destructive" });
@@ -133,6 +161,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const handleWishlist = (e: React.MouseEvent) => {
     e.stopPropagation();
+    childInteractedRef.current = true; // tell parent not to navigate
     toggleWishlist(product);
     toast({
       title: wishlisted ? "Removed from wishlist" : "Added to wishlist",
@@ -142,13 +171,17 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const handleSizeClick = (e: React.MouseEvent, size: string) => {
     e.stopPropagation();
+    e.preventDefault(); // belt-and-suspenders for iOS touch→click synthesis
+    childInteractedRef.current = true; // tell parent not to navigate
     setSelectedSize((prev) => (prev === size ? undefined : size));
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <motion.div
-      initial={isMobile ? false : { opacity: 0, y: 16 }}
-      whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
+      initial={isMobile.current ? false : { opacity: 0, y: 16 }}
+      whileInView={isMobile.current ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.35 }}
     >
@@ -157,7 +190,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
         className="group cursor-pointer overflow-hidden rounded-xl border border-border bg-card transition-colors duration-200 hover:border-border/80"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsHovered(false)}
-        onClick={() => navigate(`/product/${product.id}`)}
+        onClick={handleCardClick}
       >
         {/* ── Image ── */}
         <div className="relative aspect-[4/5] overflow-hidden bg-muted">
@@ -168,7 +201,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             decoding={priority ? "sync" : "async"}
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             className={`h-full w-full object-cover transition-all duration-700 ${
-              isHovered && !isMobile ? "scale-105" : "scale-100"
+              isHovered && !isMobile.current ? "scale-105" : "scale-100"
             } ${outOfStock ? "opacity-70" : ""}`}
           />
 
@@ -177,7 +210,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             {badgeLabel}
           </span>
 
-          {/* Wishlist button — now connected to WishlistContext */}
+          {/* Wishlist button */}
           <button
             onClick={handleWishlist}
             className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur-sm transition-colors hover:bg-background"
@@ -190,16 +223,18 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             />
           </button>
 
-          {/* Dots */}
+          {/* Slideshow dots */}
           {hasMultiple && (
             <div className={`absolute bottom-2.5 left-1/2 flex -translate-x-1/2 gap-1 transition-opacity duration-300 ${
-              isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              isMobile.current ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             }`}>
               {allImages.slice(0, 4).map((_, idx) => (
                 <span
                   key={idx}
                   className={`rounded-full transition-all duration-300 ${
-                    activeIdx === idx || (!isMobile && isHovered && idx === 1) || (!isMobile && !isHovered && idx === 0)
+                    activeIdx === idx ||
+                    (!isMobile.current && isHovered && idx === 1) ||
+                    (!isMobile.current && !isHovered && idx === 0)
                       ? "h-1.5 w-4 bg-white"
                       : "h-1.5 w-1.5 bg-white/50"
                   }`}
@@ -221,12 +256,19 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             <StarRating rating={rating} count={reviewCount} />
           </div>
 
+          {/* Size buttons */}
           {hasSizes && (
             <div className="mb-3 flex flex-wrap gap-1.5">
               {product.sizes!.map((size) => (
                 <button
                   key={size}
                   onClick={(e) => handleSizeClick(e, size)}
+                  // touchstart sets the flag immediately, before iOS synthesises
+                  // the click — this is the most reliable interception point.
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    childInteractedRef.current = true;
+                  }}
                   className={`rounded border px-2 py-0.5 font-body text-[11px] font-medium transition-colors ${
                     selectedSize === size
                       ? "border-foreground bg-foreground text-background"
@@ -243,6 +285,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             <span className={`font-heading text-base font-semibold sm:text-lg ${outOfStock ? "text-muted-foreground" : "text-foreground"}`}>
               ₹{product.price.toLocaleString("en-IN")}
             </span>
+
             {outOfStock ? (
               <span className="rounded-full border border-border bg-muted px-3 py-1 font-body text-xs text-muted-foreground">
                 Sold out
@@ -250,6 +293,10 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             ) : (
               <button
                 onClick={handleAddToCart}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  childInteractedRef.current = true;
+                }}
                 className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 font-body text-xs font-medium text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
               >
                 <ShoppingBag className="h-3 w-3" />
