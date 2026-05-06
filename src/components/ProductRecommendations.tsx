@@ -162,7 +162,7 @@ interface Props {
   recentlyViewedIds: string[];
 }
 
-type LoadState = "idle" | "loading" | "done";
+type LoadState = "loading" | "done";
 
 const MAX_SIMILAR = 8;
 const MAX_RECENT = 8;
@@ -173,15 +173,16 @@ const GENERAL_POOL  = 30; // alphabetical general fallback for diversity
 const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) => {
   const [similar, setSimilar] = useState<Product[]>([]);
   const [recentProducts, setRecentProducts] = useState<Product[]>([]);
-  const [similarState, setSimilarState] = useState<LoadState>("idle");
-  const [recentState, setRecentState] = useState<LoadState>("idle");
+
+  // FIX: initialise both states as "loading" so the skeleton renders
+  // immediately on mount — before the useEffect fires — instead of the
+  // component returning null due to the old "idle" early-return guard.
+  const [similarState, setSimilarState] = useState<LoadState>("loading");
+  const [recentState, setRecentState] = useState<LoadState>("loading");
 
   // ── "You May Also Like": two parallel queries, merged + scored ────────────
   //
-  // OLD: one orderBy("name") limit(60) — always the first 60 alphabetically.
-  //      Products deeper in the catalogue were never seen.
-  //
-  // NEW: two queries run in parallel:
+  // Two queries run in parallel:
   //   1. where("category", "==", ...) limit(30) — guarantees same-category
   //      products are in the pool regardless of their name/order in Firestore.
   //   2. orderBy("name") limit(30) — general diversity fallback.
@@ -196,8 +197,7 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
     (async () => {
       try {
         const [categorySnap, generalSnap] = await Promise.all([
-          // Query 1: all products in the same category (no orderBy = collection scan
-          // filtered server-side; fine for a bounded limit(30))
+          // Query 1: all products in the same category
           getDocs(
             query(
               collection(db, "products"),
@@ -293,14 +293,12 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
     return () => { cancelled = true; };
   }, [recentlyViewedIds, currentProduct.id]);
 
-  const showSimilarSkeleton = similarState === "loading";
-  const showRecentSkeleton  = recentState === "loading";
-
-  // Render nothing if both are idle or both finished empty
+  // FIX: removed the "idle" early-return guard that was causing the section
+  // to return null on the first render before the useEffect could fire.
+  // Now we only bail out when both fetches are done and both came back empty.
   if (
-    similarState === "idle" ||
-    (similarState === "done" && similar.length === 0 &&
-      recentState === "done" && recentProducts.length === 0)
+    similarState === "done" && similar.length === 0 &&
+    recentState === "done" && recentProducts.length === 0
   ) {
     return null;
   }
@@ -309,7 +307,7 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
     <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
       <div className="space-y-12">
 
-        {showSimilarSkeleton ? (
+        {similarState === "loading" ? (
           <CarouselSkeleton title="You May Also Like" />
         ) : similar.length > 0 ? (
           <HorizontalCarousel
@@ -319,7 +317,7 @@ const ProductRecommendations = ({ currentProduct, recentlyViewedIds }: Props) =>
           />
         ) : null}
 
-        {showRecentSkeleton ? (
+        {recentState === "loading" ? (
           <CarouselSkeleton title="Recently Viewed" />
         ) : recentProducts.length > 0 ? (
           <HorizontalCarousel
