@@ -4,7 +4,7 @@ import { useCart } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { X, MapPin, Loader2, ChevronDown, CheckCircle2, Plus } from "lucide-react";
+import { X, MapPin, Loader2, CheckCircle2, Plus } from "lucide-react";
 import { ShippingAddress } from "@/types/order";
 import { sendOrderEmails } from "@/lib/email";
 import { db } from "@/lib/firebase";
@@ -43,7 +43,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [paying, setPaying] = useState(false);
 
-  // Load saved addresses when modal opens
   useEffect(() => {
     if (!open || !user) return;
     const load = async () => {
@@ -64,7 +63,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         } else {
           setUseNewAddress(true);
         }
-      } catch (e) {
+      } catch {
         setUseNewAddress(true);
       }
       setLoadingSaved(false);
@@ -74,7 +73,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
 
   if (!open) return null;
 
-  // Active address: either a saved one or the new form
   const activeAddress: ShippingAddress | null =
     !useNewAddress && selectedSavedIdx !== null
       ? savedAddresses[selectedSavedIdx]
@@ -170,13 +168,14 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ background: "rgba(0,0,0,0.55)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-lg bg-card rounded-2xl shadow-xl overflow-hidden">
+      {/* FIX: full-width sheet on mobile, centered card on sm+ */}
+      <div className="w-full sm:max-w-lg bg-card sm:rounded-2xl shadow-xl overflow-hidden rounded-t-2xl">
 
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-4 py-4 sm:px-6">
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4 text-primary" />
             <h2 className="font-heading text-base font-semibold">Delivery Address</h2>
@@ -186,9 +185,10 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
+        {/* FIX: max-h accounts for bottom sheet on mobile (leaves room for CTA) */}
+        <div className="px-4 py-5 space-y-4 max-h-[60vh] overflow-y-auto sm:px-6 sm:max-h-[65vh]">
 
-          {/* ── Saved addresses ─────────────────────────────────────────── */}
+          {/* Saved addresses */}
           {loadingSaved && (
             <div className="space-y-2">
               <div className="h-16 animate-pulse rounded-xl bg-muted" />
@@ -219,7 +219,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
                     onChange={() => { setSelectedSavedIdx(idx); setUseNewAddress(false); }}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="font-body text-sm font-semibold text-foreground">{addr.fullName}</p>
                       {idx === 0 && (
                         <span className="rounded-full bg-primary/10 px-1.5 py-0.5 font-body text-[10px] font-semibold text-primary">
@@ -238,7 +238,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
                 </label>
               ))}
 
-              {/* Use new address toggle */}
               <label
                 className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 transition-colors ${
                   useNewAddress
@@ -259,37 +258,44 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
             </div>
           )}
 
-          {/* ── New address form ─────────────────────────────────────────── */}
+          {/* New address form */}
           {(useNewAddress || savedAddresses.length === 0) && !loadingSaved && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               {savedAddresses.length > 0 && (
-                <p className="col-span-2 font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                   New Address
                 </p>
               )}
 
-              <div className="col-span-2 space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Full Name *</label>
+              <div className="space-y-1">
+                <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Full Name *</label>
                 <Input placeholder="Priya Sharma" value={address.fullName} onChange={field("fullName")} />
               </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mobile Number *</label>
-                <Input placeholder="9876543210" maxLength={10} value={address.phone} onChange={field("phone")} />
+
+              <div className="space-y-1">
+                <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mobile Number *</label>
+                <Input placeholder="9876543210" maxLength={10} value={address.phone} onChange={field("phone")} inputMode="numeric" />
               </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Street Address *</label>
+
+              <div className="space-y-1">
+                <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Street Address *</label>
                 <Input placeholder="House no., Street, Area, Landmark" value={address.street} onChange={field("street")} />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">City *</label>
-                <Input placeholder="Lucknow" value={address.city} onChange={field("city")} />
+
+              {/* FIX: stacked on mobile, side-by-side on sm+ */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">City *</label>
+                  <Input placeholder="Lucknow" value={address.city} onChange={field("city")} />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pincode *</label>
+                  <Input placeholder="226001" maxLength={6} value={address.pincode} onChange={field("pincode")} inputMode="numeric" />
+                </div>
               </div>
+
               <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pincode *</label>
-                <Input placeholder="226001" maxLength={6} value={address.pincode} onChange={field("pincode")} />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">State *</label>
+                <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">State *</label>
                 <select
                   value={address.state}
                   onChange={field("state")}
@@ -304,12 +310,12 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
             </div>
           )}
 
-          {/* ── Order summary ─────────────────────────────────────────────── */}
+          {/* Order summary */}
           <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order Summary</p>
+            <p className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order Summary</p>
             {items.map((item) => (
-              <div key={`${item.id}-${item.selectedSize}`} className="flex justify-between text-sm">
-                <span className="text-foreground truncate mr-2">
+              <div key={`${item.id}-${item.selectedSize}`} className="flex justify-between gap-2 text-sm">
+                <span className="text-foreground truncate min-w-0">
                   {item.name}{item.selectedSize ? ` (${item.selectedSize})` : ""} × {item.cartQuantity}
                 </span>
                 <span className="text-muted-foreground shrink-0">
@@ -321,11 +327,11 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
               <span>Total</span>
               <span>₹{totalPrice.toLocaleString("en-IN")}</span>
             </div>
-            <p className="text-xs text-primary">✦ Free shipping on this order</p>
+            <p className="font-body text-xs text-primary">✦ Free shipping on this order</p>
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-border">
+        <div className="px-4 py-4 border-t border-border sm:px-6">
           <Button className="w-full rounded-full text-base py-5 gap-2" onClick={handlePay} disabled={paying}>
             {paying
               ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
