@@ -166,7 +166,10 @@ const Cart = () => {
       <CheckoutModal
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
-        userEmail={user?.email || ""}
+        {/* FIX: was `user?.email || ""` which passes "" for phone-auth users,
+            causing EmailJS to throw "recipients address is empty".
+            Now passes null so CheckoutModal can show an email input field. */}
+        userEmail={user?.email ?? null}
       />
     </div>
   );
