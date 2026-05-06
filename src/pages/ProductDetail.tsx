@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import { Product, JEWELRY_CATEGORIES } from "@/types/product";
 import { useCart } from "@/contexts/CartContext";
 import { useWishlist } from "@/contexts/WishlistContext";
+import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,45 +17,23 @@ import {
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import ProductRecommendations from "@/components/ProductRecommendations";
 import { detailImage, optimizeImage } from "@/lib/cloudinary";
 
-// ─── Optimised image component with blur-up effect ────────────────────────────
+// ─── Blur-up image ────────────────────────────────────────────────────────────
 
 const CloudImage = ({
-  src,
-  alt,
-  className = "",
-  eager = false,
-}: {
-  src: string;
-  alt: string;
-  className?: string;
-  eager?: boolean;
-}) => {
+  src, alt, className = "", eager = false,
+}: { src: string; alt: string; className?: string; eager?: boolean }) => {
   const [loaded, setLoaded] = useState(false);
-  const tinyUrl = optimizeImage(src, 20);
-  const fullUrl = detailImage(src);
-
   return (
     <div className={`relative overflow-hidden ${className}`}>
-      <img
-        src={tinyUrl}
-        alt=""
-        aria-hidden="true"
-        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${
-          loaded ? "opacity-0" : "opacity-100 blur-xl scale-110"
-        }`}
-      />
-      <img
-        src={fullUrl}
-        alt={alt}
-        loading={eager ? "eager" : "lazy"}
-        decoding={eager ? "sync" : "async"}
+      <img src={optimizeImage(src, 20)} alt="" aria-hidden="true"
+        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${loaded ? "opacity-0" : "opacity-100 blur-xl scale-110"}`} />
+      <img src={detailImage(src)} alt={alt}
+        loading={eager ? "eager" : "lazy"} decoding={eager ? "sync" : "async"}
         onLoad={() => setLoaded(true)}
-        className={`relative h-full w-full object-cover transition-opacity duration-500 ${
-          loaded ? "opacity-100" : "opacity-0"
-        }`}
-      />
+        className={`relative h-full w-full object-cover transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`} />
     </div>
   );
 };
@@ -68,6 +47,7 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { toggleWishlist, isWishlisted } = useWishlist();
+  const { ids: recentlyViewedIds, record: recordView } = useRecentlyViewed();
   const { toast } = useToast();
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -75,8 +55,6 @@ const ProductDetail = () => {
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string | undefined>();
   const [quantity, setQuantity] = useState(1);
-
-  // Wishlist animation state
   const [wishlistPop, setWishlistPop] = useState(false);
 
   const touchStartX = useRef<number>(0);
@@ -88,37 +66,37 @@ const ProductDetail = () => {
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    const deltaX = touchStartX.current - e.changedTouches[0].clientX;
-    const deltaY = touchStartY.current - e.changedTouches[0].clientY;
-    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY)) {
-      deltaX > 0 ? goNext() : goPrev();
+    const dx = touchStartX.current - e.changedTouches[0].clientX;
+    const dy = touchStartY.current - e.changedTouches[0].clientY;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+      dx > 0 ? goNext() : goPrev();
     }
   };
 
+  // Fetch product + record view
   useEffect(() => {
-    const fetch = async () => {
+    const fetchProduct = async () => {
       if (!id) return;
       try {
         const snap = await getDoc(doc(db, "products", id));
-        if (snap.exists()) setProduct({ id: snap.id, ...snap.data() } as Product);
+        if (snap.exists()) {
+          const p = { id: snap.id, ...snap.data() } as Product;
+          setProduct(p);
+          recordView(p.id); // ← record this product as recently viewed
+        }
       } catch (err) {
         console.error("Failed to fetch product:", err);
       } finally {
         setLoading(false);
       }
     };
-    fetch();
-  }, [id]);
+    fetchProduct();
+  }, [id, recordView]);
 
   const preloadAdjacent = useCallback((images: string[], current: number) => {
-    const next = (current + 1) % images.length;
-    const prev = (current - 1 + images.length) % images.length;
-    [next, prev].forEach((idx) => {
-      if (idx !== current) {
-        const img = new Image();
-        img.src = detailImage(images[idx]);
-      }
-    });
+    [(current + 1) % images.length, (current - 1 + images.length) % images.length]
+      .filter((i) => i !== current)
+      .forEach((i) => { const img = new Image(); img.src = detailImage(images[i]); });
   }, []);
 
   useEffect(() => {
@@ -128,7 +106,7 @@ const ProductDetail = () => {
     }
   }, [product, selectedImage, preloadAdjacent]);
 
-  // ── Loading skeleton ──────────────────────────────────────────────────────
+  // ── Skeletons / not-found ─────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -149,16 +127,10 @@ const ProductDetail = () => {
               <div className="space-y-5">
                 <div className="h-5 w-24 animate-pulse rounded-full bg-muted" />
                 <div className="h-9 w-3/4 animate-pulse rounded-lg bg-muted" />
-                <div className="h-5 w-32 animate-pulse rounded bg-muted" />
                 <div className="h-8 w-28 animate-pulse rounded-lg bg-muted" />
                 <div className="space-y-2">
-                  <div className="h-4 w-full animate-pulse rounded bg-muted" />
-                  <div className="h-4 w-5/6 animate-pulse rounded bg-muted" />
-                  <div className="h-4 w-4/6 animate-pulse rounded bg-muted" />
-                </div>
-                <div className="flex gap-2">
-                  {["S", "M", "L", "XL"].map((s) => (
-                    <div key={s} className="h-10 w-14 animate-pulse rounded-full bg-muted" />
+                  {[1, 0.83, 0.67].map((w, i) => (
+                    <div key={i} className="h-4 animate-pulse rounded bg-muted" style={{ width: `${w * 100}%` }} />
                   ))}
                 </div>
                 <div className="h-14 w-full animate-pulse rounded-full bg-muted" />
@@ -184,72 +156,65 @@ const ProductDetail = () => {
     );
   }
 
+  // ── Derived values ────────────────────────────────────────────────────────
+
   const allImages = product.images?.length > 0 ? product.images : [product.image];
   const isJewelry = JEWELRY_CATEGORIES.some((c) => c.toLowerCase() === product.category.toLowerCase());
   const hasSizes = !isJewelry && product.sizes && product.sizes.length > 0;
   const outOfStock = !product.inStock || product.quantity <= 0;
   const wishlisted = isWishlisted(product.id);
-
   const rating = 4.3;
   const reviewCount = 127;
   const canonicalUrl = `${BASE_URL}/product/${product.id}`;
   const ogImage = detailImage(allImages[0]);
-
   const metaDesc = product.description.length > 155
-    ? product.description.slice(0, 152) + "..."
-    : product.description;
+    ? product.description.slice(0, 152) + "..." : product.description;
 
   const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: product.name,
-    image: allImages.map(detailImage),
+    "@context": "https://schema.org", "@type": "Product",
+    name: product.name, image: allImages.map(detailImage),
     description: product.description,
     brand: { "@type": "Brand", name: "Urban Dhage" },
     offers: {
-      "@type": "Offer",
-      price: product.price,
-      priceCurrency: "INR",
-      availability: product.inStock
-        ? "https://schema.org/InStock"
-        : "https://schema.org/OutOfStock",
-      url: canonicalUrl,
-      seller: { "@type": "Organization", name: "Urban Dhage" },
+      "@type": "Offer", price: product.price, priceCurrency: "INR",
+      availability: product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: canonicalUrl, seller: { "@type": "Organization", name: "Urban Dhage" },
     },
-    aggregateRating: {
-      "@type": "AggregateRating",
-      ratingValue: rating,
-      reviewCount,
-    },
+    aggregateRating: { "@type": "AggregateRating", ratingValue: rating, reviewCount },
   };
 
   const handleAddToCart = () => {
-    if (hasSizes && !selectedSize) {
-      toast({ title: "Please select a size", variant: "destructive" });
-      return;
-    }
+    if (hasSizes && !selectedSize) { toast({ title: "Please select a size", variant: "destructive" }); return; }
     for (let i = 0; i < quantity; i++) addToCart(product, selectedSize);
-    toast({
-      title: "Added to cart",
-      description: `${product.name}${selectedSize ? ` (${selectedSize})` : ""} ×${quantity}`,
-    });
+    toast({ title: "Added to cart", description: `${product.name}${selectedSize ? ` (${selectedSize})` : ""} ×${quantity}` });
   };
 
   const handleToggleWishlist = () => {
     toggleWishlist(product);
-    // Brief pop animation
     setWishlistPop(true);
     setTimeout(() => setWishlistPop(false), 300);
     toast({
       title: wishlisted ? "Removed from wishlist" : "Added to wishlist",
-      description: wishlisted
-        ? `${product.name} was removed from your wishlist.`
-        : `${product.name} was saved to your wishlist.`,
+      description: wishlisted ? `${product.name} was removed.` : `${product.name} was saved.`,
     });
   };
 
   const goPrev = () => setSelectedImage((p) => (p - 1 + allImages.length) % allImages.length);
   const goNext = () => setSelectedImage((p) => (p + 1) % allImages.length);
+
+  const WishlistBtn = ({ className = "" }: { className?: string }) => (
+    <button
+      onClick={handleToggleWishlist}
+      aria-label={wishlisted ? "Remove from wishlist" : "Save to wishlist"}
+      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border transition-all duration-200
+        ${wishlisted ? "border-rose-400 bg-rose-50 text-rose-500 dark:bg-rose-950/30" : "border-border bg-background text-muted-foreground hover:border-rose-300 hover:text-rose-400"}
+        ${wishlistPop ? "scale-110" : "scale-100"} ${className}`}
+    >
+      <Heart className={`h-5 w-5 transition-all duration-200 ${wishlisted ? "fill-rose-500" : "fill-transparent"}`} />
+    </button>
+  );
+
+  // ── Main render ───────────────────────────────────────────────────────────
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -274,6 +239,8 @@ const ProductDetail = () => {
       <Navbar />
 
       <main className="flex-1 pb-16 md:pb-0">
+
+        {/* ── Product detail grid ── */}
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <Button variant="ghost" onClick={() => navigate(-1)} className="mb-6 gap-2 font-body">
             <ArrowLeft className="h-4 w-4" /> Back
@@ -281,68 +248,33 @@ const ProductDetail = () => {
 
           <div className="grid gap-8 lg:grid-cols-2">
 
-            {/* ── Image panel ── */}
+            {/* Image panel */}
             <div className="space-y-3">
-              <div
-                className="group relative overflow-hidden rounded-2xl bg-muted aspect-[4/5]"
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-              >
-                <CloudImage
-                  src={allImages[selectedImage]}
-                  alt={product.name}
-                  className="h-full w-full"
-                  eager={true}
-                />
+              <div className="group relative overflow-hidden rounded-2xl bg-muted aspect-[4/5]"
+                onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+                <CloudImage src={allImages[selectedImage]} alt={product.name} className="h-full w-full" eager />
 
-                {/* Wishlist button — overlaid on image (top-right) */}
-                <button
-                  onClick={handleToggleWishlist}
+                {/* Wishlist overlay */}
+                <button onClick={handleToggleWishlist}
                   aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
-                  className={`
-                    absolute right-3 top-3 z-10
-                    flex h-10 w-10 items-center justify-center rounded-full
-                    border border-white/30 backdrop-blur-sm
-                    transition-all duration-200
-                    ${wishlisted
-                      ? "bg-rose-500 text-white shadow-lg shadow-rose-500/30"
-                      : "bg-black/25 text-white hover:bg-black/40"
-                    }
-                    ${wishlistPop ? "scale-125" : "scale-100"}
-                  `}
-                >
-                  <Heart
-                    className={`h-5 w-5 transition-all duration-200 ${
-                      wishlisted ? "fill-white" : "fill-transparent"
-                    }`}
-                  />
+                  className={`absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/30 backdrop-blur-sm transition-all duration-200
+                    ${wishlisted ? "bg-rose-500 text-white shadow-lg shadow-rose-500/30" : "bg-black/25 text-white hover:bg-black/40"}
+                    ${wishlistPop ? "scale-125" : "scale-100"}`}>
+                  <Heart className={`h-5 w-5 transition-all duration-200 ${wishlisted ? "fill-white" : "fill-transparent"}`} />
                 </button>
 
                 {allImages.length > 1 && (
                   <>
-                    <button
-                      onClick={goPrev}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 text-white backdrop-blur-sm transition-opacity hover:bg-black/50 md:opacity-0 md:group-hover:opacity-100"
-                    >
+                    <button onClick={goPrev} className="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 text-white backdrop-blur-sm transition-opacity hover:bg-black/50 md:opacity-0 md:group-hover:opacity-100">
                       <ChevronLeft className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={goNext}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 text-white backdrop-blur-sm transition-opacity hover:bg-black/50 md:opacity-0 md:group-hover:opacity-100"
-                    >
+                    <button onClick={goNext} className="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 text-white backdrop-blur-sm transition-opacity hover:bg-black/50 md:opacity-0 md:group-hover:opacity-100">
                       <ChevronRight className="h-4 w-4" />
                     </button>
                     <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
                       {allImages.map((_, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setSelectedImage(idx)}
-                          className={`rounded-full transition-all duration-300 ${
-                            idx === selectedImage
-                              ? "w-5 h-1.5 bg-white"
-                              : "w-1.5 h-1.5 bg-white/50"
-                          }`}
-                        />
+                        <button key={idx} onClick={() => setSelectedImage(idx)}
+                          className={`rounded-full transition-all duration-300 ${idx === selectedImage ? "w-5 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/50"}`} />
                       ))}
                     </div>
                   </>
@@ -352,23 +284,10 @@ const ProductDetail = () => {
               {allImages.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto px-0.5 pt-0.5 pb-1 scrollbar-hide">
                   {allImages.map((img, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedImage(idx)}
-                      className={`relative aspect-[4/5] h-20 shrink-0 rounded-xl transition-all duration-200 ring-2 ring-offset-2 focus:outline-none ${
-                        idx === selectedImage
-                          ? "ring-primary opacity-100"
-                          : "ring-transparent opacity-60 hover:opacity-90 hover:ring-border"
-                      }`}
-                    >
+                    <button key={idx} onClick={() => setSelectedImage(idx)}
+                      className={`relative aspect-[4/5] h-20 shrink-0 rounded-xl transition-all duration-200 ring-2 ring-offset-2 focus:outline-none ${idx === selectedImage ? "ring-primary opacity-100" : "ring-transparent opacity-60 hover:opacity-90 hover:ring-border"}`}>
                       <span className="block h-full w-full overflow-hidden rounded-[10px]">
-                        <img
-                          src={optimizeImage(img, 160)}
-                          alt={`View ${idx + 1}`}
-                          loading="lazy"
-                          decoding="async"
-                          className="h-full w-full object-cover"
-                        />
+                        <img src={optimizeImage(img, 160)} alt={`View ${idx + 1}`} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                       </span>
                     </button>
                   ))}
@@ -376,7 +295,7 @@ const ProductDetail = () => {
               )}
             </div>
 
-            {/* ── Product details ── */}
+            {/* Product info */}
             <div className="space-y-6">
               <div>
                 <Badge className="mb-3 font-body">{product.category}</Badge>
@@ -385,46 +304,28 @@ const ProductDetail = () => {
                 </h1>
               </div>
 
-              {/* Rating */}
               <div className="flex items-center gap-2">
                 <div className="flex">
                   {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      className={`h-4 w-4 ${i < Math.floor(rating) ? "fill-saffron text-saffron" : "text-muted"}`}
-                    />
+                    <Star key={i} className={`h-4 w-4 ${i < Math.floor(rating) ? "fill-saffron text-saffron" : "text-muted"}`} />
                   ))}
                 </div>
-                <span className="font-body text-sm text-muted-foreground">
-                  {rating} ({reviewCount} reviews)
-                </span>
+                <span className="font-body text-sm text-muted-foreground">{rating} ({reviewCount} reviews)</span>
               </div>
 
-              {/* Price */}
               <p className="font-heading text-3xl font-bold text-foreground">
                 ₹{product.price.toLocaleString("en-IN")}
               </p>
 
-              {/* Description */}
-              <p className="font-body leading-relaxed text-muted-foreground">
-                {product.description}
-              </p>
+              <p className="font-body leading-relaxed text-muted-foreground">{product.description}</p>
 
-              {/* Sizes */}
               {hasSizes && (
                 <div>
                   <p className="mb-3 font-body text-sm font-semibold text-foreground">Select Size</p>
                   <div className="flex flex-wrap gap-2">
                     {product.sizes!.map((size) => (
-                      <button
-                        key={size}
-                        onClick={() => setSelectedSize(size)}
-                        className={`rounded-full border px-5 py-2 font-body text-sm font-medium transition-all ${
-                          selectedSize === size
-                            ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                            : "border-input bg-background text-foreground hover:border-primary/50"
-                        }`}
-                      >
+                      <button key={size} onClick={() => setSelectedSize(size)}
+                        className={`rounded-full border px-5 py-2 font-body text-sm font-medium transition-all ${selectedSize === size ? "border-primary bg-primary text-primary-foreground shadow-sm" : "border-input bg-background text-foreground hover:border-primary/50"}`}>
                         {size}
                       </button>
                     ))}
@@ -432,105 +333,48 @@ const ProductDetail = () => {
                 </div>
               )}
 
-              {/* Quantity */}
               <div>
                 <p className="mb-3 font-body text-sm font-semibold text-foreground">Quantity</p>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors hover:bg-muted"
-                  >
+                  <button onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors hover:bg-muted">
                     <Minus className="h-3.5 w-3.5" />
                   </button>
-                  <span className="w-8 text-center font-body font-semibold text-foreground">
-                    {quantity}
-                  </span>
-                  <button
-                    onClick={() => setQuantity(Math.min(product.quantity, quantity + 1))}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors hover:bg-muted"
-                  >
+                  <span className="w-8 text-center font-body font-semibold text-foreground">{quantity}</span>
+                  <button onClick={() => setQuantity(Math.min(product.quantity, quantity + 1))}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors hover:bg-muted">
                     <Plus className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
 
-              {/* Stock warning */}
               {!outOfStock && product.quantity <= 5 && (
                 <p className="font-body text-sm font-medium text-destructive">
                   Only {product.quantity} left in stock — order soon!
                 </p>
               )}
 
-              {/* CTA row: Add to Cart + Wishlist */}
-              {outOfStock ? (
-                <div className="flex gap-3">
+              {/* CTA */}
+              <div className="flex gap-3">
+                {outOfStock ? (
                   <div className="flex-1 rounded-full border border-border bg-muted px-6 py-4 text-center font-body text-sm font-medium text-muted-foreground">
                     Out of Stock
                   </div>
-                  {/* Still allow wishlisting out-of-stock items */}
-                  <button
-                    onClick={handleToggleWishlist}
-                    aria-label={wishlisted ? "Remove from wishlist" : "Save to wishlist"}
-                    className={`
-                      flex h-14 w-14 shrink-0 items-center justify-center rounded-full border
-                      transition-all duration-200
-                      ${wishlisted
-                        ? "border-rose-400 bg-rose-50 text-rose-500 dark:bg-rose-950/30"
-                        : "border-border bg-background text-muted-foreground hover:border-rose-300 hover:text-rose-400"
-                      }
-                      ${wishlistPop ? "scale-110" : "scale-100"}
-                    `}
-                  >
-                    <Heart
-                      className={`h-5 w-5 transition-all duration-200 ${
-                        wishlisted ? "fill-rose-500" : "fill-transparent"
-                      }`}
-                    />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-3">
-                  <Button
-                    size="lg"
-                    onClick={handleAddToCart}
-                    className="flex-1 gap-2 rounded-full py-6 font-body text-base"
-                  >
-                    <ShoppingBag className="h-5 w-5" />
-                    Add to Cart
+                ) : (
+                  <Button size="lg" onClick={handleAddToCart}
+                    className="flex-1 gap-2 rounded-full py-6 font-body text-base">
+                    <ShoppingBag className="h-5 w-5" /> Add to Cart
                   </Button>
+                )}
+                <WishlistBtn />
+              </div>
 
-                  {/* Wishlist toggle button */}
-                  <button
-                    onClick={handleToggleWishlist}
-                    aria-label={wishlisted ? "Remove from wishlist" : "Save to wishlist"}
-                    className={`
-                      flex h-14 w-14 shrink-0 items-center justify-center rounded-full border
-                      transition-all duration-200
-                      ${wishlisted
-                        ? "border-rose-400 bg-rose-50 text-rose-500 dark:bg-rose-950/30"
-                        : "border-border bg-background text-muted-foreground hover:border-rose-300 hover:text-rose-400"
-                      }
-                      ${wishlistPop ? "scale-110" : "scale-100"}
-                    `}
-                  >
-                    <Heart
-                      className={`h-5 w-5 transition-all duration-200 ${
-                        wishlisted ? "fill-rose-500" : "fill-transparent"
-                      }`}
-                    />
-                  </button>
-                </div>
-              )}
-
-              {/* Wishlist label (only shown when saved) */}
               {wishlisted && (
                 <p className="flex items-center gap-1.5 font-body text-xs text-rose-500">
-                  <Heart className="h-3.5 w-3.5 fill-rose-500" />
-                  Saved to your wishlist
+                  <Heart className="h-3.5 w-3.5 fill-rose-500" /> Saved to your wishlist
                 </p>
               )}
 
-              {/* WhatsApp order */}
               <button
                 onClick={() => {
                   const msg = `Hi! I want to order:\n*${product.name}*${selectedSize ? ` (Size: ${selectedSize})` : ""}\n₹${product.price.toLocaleString("en-IN")}\nPlease confirm availability.`;
@@ -546,6 +390,13 @@ const ProductDetail = () => {
             </div>
           </div>
         </div>
+
+        {/* ── Recommendations (You May Also Like + Recently Viewed) ── */}
+        <ProductRecommendations
+          currentProduct={product}
+          recentlyViewedIds={recentlyViewedIds}
+        />
+
       </main>
 
       <Footer />
