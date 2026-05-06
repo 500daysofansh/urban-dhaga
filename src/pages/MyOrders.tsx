@@ -108,7 +108,7 @@ function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
-// ─── Vertical stepper ────────────────────────────────────────────────────────
+// ─── Vertical stepper ─────────────────────────────────────────────────────────
 
 function OrderStepper({ status }: { status: OrderStatus }) {
   const currentIdx = getStepIndex(status);
@@ -190,7 +190,7 @@ function OrderStepper({ status }: { status: OrderStatus }) {
   );
 }
 
-// ─── Cancel confirmation dialog ───────────────────────────────────────────────
+// ─── Cancel dialog ────────────────────────────────────────────────────────────
 
 function CancelDialog({
   orderId,
@@ -221,11 +221,11 @@ function CancelDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ background: "rgba(0,0,0,0.55)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-xl overflow-hidden">
+      <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-card shadow-xl overflow-hidden">
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-destructive/10 text-destructive">
             <AlertTriangle className="h-4 w-4" />
@@ -314,7 +314,7 @@ function OrderCard({ order }: { order: Order }) {
         ],
       });
       toast({ title: "Order cancelled successfully" });
-    } catch (e) {
+    } catch {
       toast({ title: "Failed to cancel order. Please try again.", variant: "destructive" });
     }
     setShowCancelDialog(false);
@@ -339,12 +339,8 @@ function OrderCard({ order }: { order: Order }) {
       }`}>
 
         {/* Header strip */}
-        <div className={`flex items-center justify-between gap-3 px-5 py-3 ${
-          isCancelled
-            ? "bg-destructive/5"
-            : isDelivered
-            ? "bg-green-50"
-            : "bg-muted/40"
+        <div className={`flex items-center justify-between gap-3 px-4 py-3 sm:px-5 ${
+          isCancelled ? "bg-destructive/5" : isDelivered ? "bg-green-50" : "bg-muted/40"
         }`}>
           <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
             #{order.paymentId.slice(-10).toUpperCase()}
@@ -357,9 +353,9 @@ function OrderCard({ order }: { order: Order }) {
           </div>
         </div>
 
-        {/* Summary */}
+        {/* Summary row */}
         <div
-          className="flex cursor-pointer items-start justify-between gap-4 px-5 py-4"
+          className="flex cursor-pointer items-start justify-between gap-3 px-4 py-4 sm:px-5"
           onClick={() => setExpanded((p) => !p)}
         >
           <div className="min-w-0 flex-1">
@@ -382,7 +378,6 @@ function OrderCard({ order }: { order: Order }) {
               {STEP_LABELS[order.status]}
             </div>
 
-            {/* Cancellation reason */}
             {isCancelled && order.cancellationReason && (
               <p className="mt-1.5 font-body text-xs text-muted-foreground">
                 Reason: {order.cancellationReason}
@@ -410,9 +405,8 @@ function OrderCard({ order }: { order: Order }) {
         {expanded && (
           <div className="divide-y divide-border/60 border-t border-border/60">
 
-            {/* Stepper (skip for cancelled) */}
             {!isCancelled && (
-              <div className="px-5 py-5">
+              <div className="px-4 py-5 sm:px-5">
                 <p className="mb-4 font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                   Order Progress
                 </p>
@@ -420,14 +414,9 @@ function OrderCard({ order }: { order: Order }) {
               </div>
             )}
 
-            {/* Status message */}
             {STATUS_META[order.status] && (
-              <div className={`px-5 py-4 ${
-                isCancelled
-                  ? "bg-destructive/[0.03]"
-                  : isDelivered
-                  ? "bg-green-50/60"
-                  : "bg-primary/[0.03]"
+              <div className={`px-4 py-4 sm:px-5 ${
+                isCancelled ? "bg-destructive/[0.03]" : isDelivered ? "bg-green-50/60" : "bg-primary/[0.03]"
               }`}>
                 <p className={`font-body text-xs leading-relaxed ${
                   isCancelled ? "text-destructive/80" : isDelivered ? "text-green-800" : "text-foreground/80"
@@ -441,7 +430,7 @@ function OrderCard({ order }: { order: Order }) {
             )}
 
             {/* Items */}
-            <div className="px-5 py-4">
+            <div className="px-4 py-4 sm:px-5">
               <p className="mb-3 font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Items</p>
               <div className="space-y-3">
                 {order.items.map((item: OrderItem, i: number) => (
@@ -472,7 +461,7 @@ function OrderCard({ order }: { order: Order }) {
             </div>
 
             {/* Address */}
-            <div className="px-5 py-4">
+            <div className="px-4 py-4 sm:px-5">
               <p className="mb-3 font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Delivery Address</p>
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
@@ -487,9 +476,9 @@ function OrderCard({ order }: { order: Order }) {
               </div>
             </div>
 
-            {/* Activity timeline */}
+            {/* Activity */}
             {visibleHistory.length > 0 && (
-              <div className="px-5 py-4">
+              <div className="px-4 py-4 sm:px-5">
                 <p className="mb-3 font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Activity</p>
                 <div className="space-y-3">
                   {[...visibleHistory].reverse().map((h, i) => {
@@ -529,11 +518,11 @@ function OrderCard({ order }: { order: Order }) {
             )}
 
             {/* Payment ID */}
-            <div className="px-5 py-3">
+            <div className="px-4 py-3 sm:px-5">
               <div className="flex items-center gap-2">
                 <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="font-body text-[11px] text-muted-foreground">Payment ID:</span>
-                <span className="font-mono text-[11px] text-muted-foreground">{order.paymentId}</span>
+                <span className="font-mono text-[11px] text-muted-foreground break-all">{order.paymentId}</span>
               </div>
             </div>
 
@@ -577,6 +566,13 @@ export default function MyOrders() {
     return true;
   });
 
+  const filterTabs = [
+    { key: "all",       label: "All",       count: orders.length },
+    { key: "active",    label: "Active",    count: activeCount },
+    { key: "delivered", label: "Delivered", count: deliveredCount },
+    ...(cancelledCount > 0 ? [{ key: "cancelled", label: "Cancelled", count: cancelledCount }] : []),
+  ] as const;
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Navbar />
@@ -593,27 +589,24 @@ export default function MyOrders() {
 
         <div className="mx-auto max-w-2xl px-4 py-6">
 
-          {/* Filter tabs */}
+          {/* FIX: overflow-x-auto so tabs scroll horizontally instead of wrapping or overflowing */}
           {!loading && orders.length > 0 && (
-            <div className="mb-6 flex w-fit gap-1 rounded-full border border-border bg-muted/40 p-1">
-              {([
-                ["all",       `All (${orders.length})`],
-                ["active",    `Active (${activeCount})`],
-                ["delivered", `Delivered (${deliveredCount})`],
-                ...(cancelledCount > 0 ? [["cancelled", `Cancelled (${cancelledCount})`]] as const : []),
-              ] as const).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setFilter(key)}
-                  className={`rounded-full px-4 py-1.5 font-body text-xs font-semibold transition-all ${
-                    filter === key
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="mb-6 overflow-x-auto">
+              <div className="flex w-max gap-1 rounded-full border border-border bg-muted/40 p-1">
+                {filterTabs.map(({ key, label, count }) => (
+                  <button
+                    key={key}
+                    onClick={() => setFilter(key)}
+                    className={`whitespace-nowrap rounded-full px-4 py-1.5 font-body text-xs font-semibold transition-all ${
+                      filter === key
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label} ({count})
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
