@@ -4,7 +4,7 @@ import { useCart } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { X, MapPin, Loader2, CheckCircle2, Plus } from "lucide-react";
+import { X, MapPin, Loader2, CheckCircle2, Plus, Truck, CreditCard } from "lucide-react";
 import { ShippingAddress } from "@/types/order";
 import { sendOrderEmails } from "@/lib/email";
 import { db } from "@/lib/firebase";
@@ -17,13 +17,15 @@ interface CheckoutModalProps {
   userEmail: string;
 }
 
+const DELIVERY_CHARGE = 60;
+
 const INDIAN_STATES = [
-  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
-  "Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka",
-  "Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram",
-  "Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu",
-  "Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
-  "Delhi","Jammu & Kashmir","Ladakh","Puducherry",
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Delhi", "Jammu & Kashmir", "Ladakh", "Puducherry",
 ];
 
 const empty: ShippingAddress = {
@@ -42,6 +44,9 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
   const [address, setAddress] = useState<ShippingAddress>(empty);
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"online" | "cod">("online");
+
+  const finalAmount = totalPrice + DELIVERY_CHARGE;
 
   useEffect(() => {
     if (!open || !user) return;
@@ -92,19 +97,84 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
     return null;
   };
 
-  const handlePay = () => {
-    if (!activeAddress) { toast({ title: "Please select or enter a delivery address", variant: "destructive" }); return; }
+  const handlePay = async () => {
+    if (!activeAddress) {
+      toast({ title: "Please select or enter a delivery address", variant: "destructive" });
+      return;
+    }
     const err = validate(activeAddress);
-    if (err) { toast({ title: err, variant: "destructive" }); return; }
+    if (err) {
+      toast({ title: err, variant: "destructive" });
+      return;
+    }
 
     const addressLine = `${activeAddress.fullName}\n${activeAddress.phone}\n${activeAddress.street}, ${activeAddress.city}, ${activeAddress.state} - ${activeAddress.pincode}`;
     const itemsSummary = items
       .map((i) => `${i.name}${i.selectedSize ? ` (${i.selectedSize})` : ""} × ${i.cartQuantity} = ₹${(i.price * i.cartQuantity).toLocaleString("en-IN")}`)
       .join("\n");
 
+    // ── Cash on Delivery ──────────────────────────────────────────────
+    if (paymentMethod === "cod") {
+      setPaying(true);
+      const now = Date.now();
+      try {
+        const orderRef = await addDoc(collection(db, "orders"), {
+          customerName: activeAddress.fullName,
+          customerEmail: userEmail,
+          paymentId: "COD",
+          amount: finalAmount,
+          deliveryCharge: DELIVERY_CHARGE,
+          paymentMethod: "cod",
+          address: activeAddress,
+          items: items.map((i) => ({
+            name: i.name,
+            price: i.price,
+            cartQuantity: i.cartQuantity,
+            selectedSize: i.selectedSize || null,
+            image: i.image || null,
+          })),
+          status: "order_placed",
+          createdAt: now,
+          updatedAt: now,
+          statusHistory: [{ status: "order_placed", timestamp: now }],
+        });
+        await updateDoc(orderRef, { orderId: orderRef.id });
+        await sendOrderEmails({
+          customerName: activeAddress.fullName,
+          customerEmail: userEmail,
+          paymentId: "COD",
+          amount: finalAmount,
+          addressLine,
+          itemsSummary,
+        });
+      } catch (e) {
+        console.error("COD order error:", e);
+        toast({ title: "Something went wrong. Please try again.", variant: "destructive" });
+        setPaying(false);
+        return;
+      }
+      clearCart();
+      onClose();
+      navigate("/order-confirmation", {
+        state: {
+          paymentId: "COD",
+          amount: finalAmount,
+          deliveryCharge: DELIVERY_CHARGE,
+          paymentMethod: "cod",
+          address: activeAddress,
+          items: items.map((i) => ({
+            name: i.name, cartQuantity: i.cartQuantity,
+            price: i.price, selectedSize: i.selectedSize,
+          })),
+        },
+      });
+      return;
+    }
+
+    // ── Online Payment via Razorpay ───────────────────────────────────
     const options: any = {
       key: "rzp_live_Siq5Fd24TZ9Zxl",
-      amount: totalPrice * 100,
+      amount: finalAmount * 100,
       currency: "INR",
       name: "Urban Dhage",
       description: `Order of ${items.length} item(s)`,
@@ -116,29 +186,31 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         const now = Date.now();
         try {
           const orderRef = await addDoc(collection(db, "orders"), {
-            customerName:  activeAddress.fullName,
+            customerName: activeAddress.fullName,
             customerEmail: userEmail,
-            paymentId:     response.razorpay_payment_id,
-            amount:        totalPrice,
-            address:       activeAddress,
+            paymentId: response.razorpay_payment_id,
+            amount: finalAmount,
+            deliveryCharge: DELIVERY_CHARGE,
+            paymentMethod: "online",
+            address: activeAddress,
             items: items.map((i) => ({
-              name:         i.name,
-              price:        i.price,
+              name: i.name,
+              price: i.price,
               cartQuantity: i.cartQuantity,
               selectedSize: i.selectedSize || null,
-              image:        i.image || null,
+              image: i.image || null,
             })),
-            status:        "order_placed",
-            createdAt:     now,
-            updatedAt:     now,
+            status: "order_placed",
+            createdAt: now,
+            updatedAt: now,
             statusHistory: [{ status: "order_placed", timestamp: now }],
           });
           await updateDoc(orderRef, { orderId: orderRef.id });
           await sendOrderEmails({
-            customerName:  activeAddress.fullName,
+            customerName: activeAddress.fullName,
             customerEmail: userEmail,
-            paymentId:     response.razorpay_payment_id,
-            amount:        totalPrice,
+            paymentId: response.razorpay_payment_id,
+            amount: finalAmount,
             addressLine,
             itemsSummary,
           });
@@ -150,8 +222,10 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
         navigate("/order-confirmation", {
           state: {
             paymentId: response.razorpay_payment_id,
-            amount:    totalPrice,
-            address:   activeAddress,
+            amount: finalAmount,
+            deliveryCharge: DELIVERY_CHARGE,
+            paymentMethod: "online",
+            address: activeAddress,
             items: items.map((i) => ({
               name: i.name, cartQuantity: i.cartQuantity,
               price: i.price, selectedSize: i.selectedSize,
@@ -172,23 +246,23 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
       style={{ background: "rgba(0,0,0,0.55)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {/* FIX: full-width sheet on mobile, centered card on sm+ */}
       <div className="w-full sm:max-w-lg bg-card sm:rounded-2xl shadow-xl overflow-hidden rounded-t-2xl">
 
+        {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-4 sm:px-6">
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4 text-primary" />
-            <h2 className="font-heading text-base font-semibold">Delivery Address</h2>
+            <h2 className="font-heading text-base font-semibold">Checkout</h2>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* FIX: max-h accounts for bottom sheet on mobile (leaves room for CTA) */}
-        <div className="px-4 py-5 space-y-4 max-h-[60vh] overflow-y-auto sm:px-6 sm:max-h-[65vh]">
+        {/* Scrollable body */}
+        <div className="px-4 py-5 space-y-5 max-h-[60vh] overflow-y-auto sm:px-6 sm:max-h-[65vh]">
 
-          {/* Saved addresses */}
+          {/* ── Saved addresses ── */}
           {loadingSaved && (
             <div className="space-y-2">
               <div className="h-16 animate-pulse rounded-xl bg-muted" />
@@ -201,7 +275,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
               <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Saved Addresses
               </p>
-
               {savedAddresses.map((addr, idx) => (
                 <label
                   key={idx}
@@ -258,7 +331,7 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
             </div>
           )}
 
-          {/* New address form */}
+          {/* ── New address form ── */}
           {(useNewAddress || savedAddresses.length === 0) && !loadingSaved && (
             <div className="space-y-3">
               {savedAddresses.length > 0 && (
@@ -266,23 +339,18 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
                   New Address
                 </p>
               )}
-
               <div className="space-y-1">
                 <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Full Name *</label>
                 <Input placeholder="Priya Sharma" value={address.fullName} onChange={field("fullName")} />
               </div>
-
               <div className="space-y-1">
                 <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mobile Number *</label>
                 <Input placeholder="9876543210" maxLength={10} value={address.phone} onChange={field("phone")} inputMode="numeric" />
               </div>
-
               <div className="space-y-1">
                 <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Street Address *</label>
                 <Input placeholder="House no., Street, Area, Landmark" value={address.street} onChange={field("street")} />
               </div>
-
-              {/* FIX: stacked on mobile, side-by-side on sm+ */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">City *</label>
@@ -293,7 +361,6 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
                   <Input placeholder="226001" maxLength={6} value={address.pincode} onChange={field("pincode")} inputMode="numeric" />
                 </div>
               </div>
-
               <div className="space-y-1">
                 <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">State *</label>
                 <select
@@ -310,7 +377,57 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
             </div>
           )}
 
-          {/* Order summary */}
+          {/* ── Payment Method ── */}
+          <div className="space-y-2">
+            <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Payment Method
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <label
+                className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3.5 transition-colors ${
+                  paymentMethod === "online"
+                    ? "border-primary/40 bg-primary/[0.03]"
+                    : "border-border hover:border-border/80 hover:bg-muted/20"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="payment-method"
+                  className="accent-primary"
+                  checked={paymentMethod === "online"}
+                  onChange={() => setPaymentMethod("online")}
+                />
+                <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div>
+                  <p className="font-body text-sm font-semibold text-foreground">Pay Online</p>
+                  <p className="font-body text-[10px] text-muted-foreground">UPI / Card / Net banking</p>
+                </div>
+              </label>
+
+              <label
+                className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3.5 transition-colors ${
+                  paymentMethod === "cod"
+                    ? "border-primary/40 bg-primary/[0.03]"
+                    : "border-border hover:border-border/80 hover:bg-muted/20"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="payment-method"
+                  className="accent-primary"
+                  checked={paymentMethod === "cod"}
+                  onChange={() => setPaymentMethod("cod")}
+                />
+                <Truck className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div>
+                  <p className="font-body text-sm font-semibold text-foreground">Cash on Delivery</p>
+                  <p className="font-body text-[10px] text-muted-foreground">Pay when delivered</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* ── Order Summary ── */}
           <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
             <p className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order Summary</p>
             {items.map((item) => (
@@ -323,20 +440,35 @@ const CheckoutModal = ({ open, onClose, userEmail }: CheckoutModalProps) => {
                 </span>
               </div>
             ))}
-            <div className="border-t border-border pt-2 flex justify-between font-semibold text-sm">
-              <span>Total</span>
+            <div className="flex justify-between text-sm text-muted-foreground pt-1">
+              <span>Subtotal</span>
               <span>₹{totalPrice.toLocaleString("en-IN")}</span>
             </div>
-            <p className="font-body text-xs text-primary">✦ Free shipping on this order</p>
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Delivery charge</span>
+              <span>₹{DELIVERY_CHARGE.toLocaleString("en-IN")}</span>
+            </div>
+            <div className="border-t border-border pt-2 flex justify-between font-semibold text-sm">
+              <span>Total</span>
+              <span>₹{finalAmount.toLocaleString("en-IN")}</span>
+            </div>
+            {paymentMethod === "cod" && (
+              <p className="font-body text-xs text-amber-600">✦ Pay ₹{finalAmount.toLocaleString("en-IN")} in cash at delivery</p>
+            )}
           </div>
+
         </div>
 
+        {/* CTA */}
         <div className="px-4 py-4 border-t border-border sm:px-6">
           <Button className="w-full rounded-full text-base py-5 gap-2" onClick={handlePay} disabled={paying}>
-            {paying
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
-              : `Pay ₹${totalPrice.toLocaleString("en-IN")} →`
-            }
+            {paying ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+            ) : paymentMethod === "cod" ? (
+              `Place Order (COD) · ₹${finalAmount.toLocaleString("en-IN")} →`
+            ) : (
+              `Pay ₹${finalAmount.toLocaleString("en-IN")} →`
+            )}
           </Button>
         </div>
 
