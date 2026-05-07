@@ -31,6 +31,56 @@ const StarRating = ({ rating, count }: { rating: number; count: number }) => (
 
 const SLIDE_INTERVAL = 2200;
 
+// ── Badge helpers ─────────────────────────────────────────────────────────────
+
+// Each entry: [label, tailwind classes]
+type BadgeVariant = [string, string];
+
+const OUT_OF_STOCK_BADGE: BadgeVariant = [
+  "Out of stock",
+  "bg-muted text-muted-foreground border-border",
+];
+
+// Shown when quantity <= 5
+const LIMITED_BADGES: BadgeVariant[] = [
+  ["Only few left", "bg-accent/10 text-accent border-accent/30"],
+  [`Hurry, selling fast`, "bg-orange-50 text-orange-600 border-orange-200"],
+  ["Almost gone", "bg-red-50 text-red-500 border-red-200"],
+  ["Last pieces", "bg-accent/10 text-accent border-accent/30"],
+];
+
+// Shown for normal in-stock products — seeded by product.id so stable per card
+const DEFAULT_BADGES: BadgeVariant[] = [
+  ["Handcrafted", "bg-background text-muted-foreground border-border"],
+  ["Best Deal", "bg-emerald-50 text-emerald-600 border-emerald-200"],
+  ["Top Pick", "bg-violet-50 text-violet-600 border-violet-200"],
+  ["Fan Favourite", "bg-pink-50 text-pink-500 border-pink-200"],
+  ["Trending", "bg-blue-50 text-blue-500 border-blue-200"],
+  ["New Arrival", "bg-yellow-50 text-yellow-600 border-yellow-200"],
+  ["Staff Pick", "bg-background text-muted-foreground border-border"],
+  ["Exclusive", "bg-purple-50 text-purple-600 border-purple-200"],
+];
+
+// Deterministic pick based on product id — same product always gets same badge
+function pickBadge(badges: BadgeVariant[], seed: string): BadgeVariant {
+  const hash = seed.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return badges[hash % badges.length];
+}
+
+// If costPrice is set and margin > 30%, show a "X% off" deal badge instead
+function dealBadge(product: Product): BadgeVariant | null {
+  if (!product.costPrice || product.costPrice <= 0) return null;
+  const discount = Math.round(
+    ((product.costPrice - product.price) / product.costPrice) * 100
+  );
+  if (discount >= 30) {
+    return [`${discount}% off`, "bg-emerald-50 text-emerald-600 border-emerald-200"];
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const { addToCart } = useCart();
   const { toggleWishlist, isWishlisted } = useWishlist();
@@ -44,18 +94,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // FIX: evaluate isMobile synchronously so the very first render already
-  // has the correct value. The old pattern (useRef(false) + useEffect) meant
-  // the first render always saw false, and because ref changes don't trigger
-  // re-renders the motion.div kept the desktop animation (opacity: 0 →
-  // whileInView), leaving cards invisible until they scrolled into view —
-  // which produced blank spaces in the mobile product grid.
   const isMobile = useRef(typeof window !== "undefined" && window.innerWidth < 768);
-
-  // FIX: track whether a child interactive element was tapped/clicked.
-  // On iOS, stopPropagation() on a touchend doesn't reliably cancel the
-  // synthesised click that bubbles to the parent card div. Instead we set a
-  // flag and gate the navigate() behind it.
   const childInteractedRef = useRef(false);
 
   const wishlisted = isWishlisted(product.id);
@@ -68,12 +107,13 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const isLimited = !outOfStock && product.quantity <= 5;
   const hasMultiple = allImages.length > 1;
 
-  const badgeLabel = outOfStock ? "Out of stock" : isLimited ? "Limited" : "Handcrafted";
-  const badgeClass = outOfStock
-    ? "bg-muted text-muted-foreground border-border"
-    : isLimited
-    ? "bg-accent/10 text-accent border-accent/30"
-    : "bg-background text-muted-foreground border-border";
+  // ── Badge selection ──────────────────────────────────────────────────────
+  const [badgeLabel, badgeClass] = useMemo<BadgeVariant>(() => {
+    if (outOfStock) return OUT_OF_STOCK_BADGE;
+    if (isLimited) return pickBadge(LIMITED_BADGES, product.id);
+    return dealBadge(product) ?? pickBadge(DEFAULT_BADGES, product.id);
+  }, [outOfStock, isLimited, product]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const { rating, reviewCount } = useMemo(() => ({
     rating: 4 + (product.id.charCodeAt(0) % 10) / 10,
@@ -135,8 +175,6 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleCardClick = () => {
-    // If a child button (size, wishlist, add-to-cart) handled this interaction,
-    // absorb the event and reset the flag. This is the iOS fix.
     if (childInteractedRef.current) {
       childInteractedRef.current = false;
       return;
@@ -171,7 +209,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const handleSizeClick = (e: React.MouseEvent, size: string) => {
     e.stopPropagation();
-    e.preventDefault(); // belt-and-suspenders for iOS touch→click synthesis
+    e.preventDefault();
     childInteractedRef.current = true;
     setSelectedSize((prev) => (prev === size ? undefined : size));
   };
@@ -263,8 +301,6 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
                 <button
                   key={size}
                   onClick={(e) => handleSizeClick(e, size)}
-                  // touchstart sets the flag immediately, before iOS synthesises
-                  // the click — this is the most reliable interception point.
                   onTouchStart={(e) => {
                     e.stopPropagation();
                     childInteractedRef.current = true;
