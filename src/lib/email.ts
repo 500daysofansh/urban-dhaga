@@ -1,11 +1,11 @@
 import { OrderStatus } from "@/types/order";
 
-const SERVICE_ID = "service_6ayn8y6";
-const PUBLIC_KEY = "a5MUx20kzvERzjdBr";
-const CUST_TPL   = "template_fqu1999";
-const ADMIN_TPL  = "template_bv8hdi4";
-
-const STATUS_TPL = "template_status_update";
+const SERVICE_ID  = "service_6ayn8y6";
+const PUBLIC_KEY  = "a5MUx20kzvERzjdBr";
+const CUST_TPL    = "template_fqu1999";
+const ADMIN_TPL   = "template_bv8hdi4";
+const STATUS_TPL  = "template_status_update";
+const ADMIN_EMAIL = "500daysofansh@gmail.com"; // your inbox — admin alerts always go here
 
 export interface OrderEmailData {
   customerName:  string;
@@ -42,6 +42,7 @@ async function sendTemplate(templateId: string, params: Record<string, string>) 
 export async function sendOrderEmails(data: OrderEmailData) {
   const amount = `₹${data.amount.toLocaleString("en-IN")}`;
   await Promise.all([
+    // Customer confirmation — to_email is the customer
     sendTemplate(CUST_TPL, {
       to_name:          data.customerName,
       to_email:         data.customerEmail,
@@ -50,7 +51,9 @@ export async function sendOrderEmails(data: OrderEmailData) {
       delivery_address: data.addressLine,
       items_summary:    data.itemsSummary,
     }),
+    // Admin alert — to_email is always YOUR inbox, never the customer's
     sendTemplate(ADMIN_TPL, {
+      to_email:         ADMIN_EMAIL,       // ← hardcoded: admin template always goes to you
       customer_name:    data.customerName,
       customer_email:   data.customerEmail,
       payment_id:       data.paymentId,
