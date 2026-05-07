@@ -4,18 +4,19 @@ import { useCart } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { X, MapPin, Loader2, CheckCircle2, Plus, Truck, CreditCard } from "lucide-react";
+import { X, MapPin, Loader2, CheckCircle2, Plus, Truck, CreditCard, Tag, ChevronRight } from "lucide-react";
 import { ShippingAddress } from "@/types/order";
 import { sendOrderEmails } from "@/lib/email";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, updateDoc, doc, getDoc } from "firebase/firestore";
+import {
+  collection, addDoc, updateDoc, doc, getDoc,
+  query, where, getDocs, arrayUnion,
+} from "firebase/firestore";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface CheckoutModalProps {
   open: boolean;
   onClose: () => void;
-  // kept for API compatibility — email is now resolved internally from useAuth()
-  // so stale/empty values from Cart.tsx can never reach EmailJS.
   userEmail?: string | null;
 }
 
@@ -36,6 +37,14 @@ const empty: ShippingAddress = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// ── Promo types ───────────────────────────────────────────────────────────────
+interface AppliedPromo {
+  docId: string;
+  code: string;
+  discountType: "percent" | "free_delivery";
+  discountValue: number; // percent value OR 0 for free_delivery
+}
+
 const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
   const { items, totalPrice, clearCart } = useCart();
   const { toast } = useToast();
@@ -50,15 +59,34 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
   const [paying, setPaying] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"online" | "cod">("online");
 
-  // Read email directly from auth context — never trust the prop,
-  // which arrives as "" when user.email is null (phone-auth / OTP users).
+  // ── Promo state ───────────────────────────────────────────────────────────
+  const [promoInput, setPromoInput] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [appliedPromo, setAppliedPromo] = useState<AppliedPromo | null>(null);
+  const [promoError, setPromoError] = useState("");
+
   const authEmail = user?.email ?? "";
   const needsEmailInput = !authEmail || !EMAIL_RE.test(authEmail);
   const [emailOverride, setEmailOverride] = useState("");
   const resolvedEmail = needsEmailInput ? emailOverride.trim() : authEmail;
   const emailValid = EMAIL_RE.test(resolvedEmail);
 
-  const finalAmount = totalPrice + DELIVERY_CHARGE;
+  // ── Compute final amount with promo ──────────────────────────────────────
+  const deliveryCharge = appliedPromo?.discountType === "free_delivery" ? 0 : DELIVERY_CHARGE;
+  const subtotalDiscount =
+    appliedPromo?.discountType === "percent"
+      ? Math.round((totalPrice * appliedPromo.discountValue) / 100)
+      : 0;
+  const finalAmount = totalPrice - subtotalDiscount + deliveryCharge;
+
+  // Reset promo when modal closes
+  useEffect(() => {
+    if (!open) {
+      setAppliedPromo(null);
+      setPromoInput("");
+      setPromoError("");
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open || !user) return;
@@ -109,14 +137,109 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
     return null;
   };
 
+  // ── Apply promo code ──────────────────────────────────────────────────────
+  const handleApplyPromo = async () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) return;
+    if (!user) {
+      setPromoError("Please log in to apply a promo code.");
+      return;
+    }
+
+    setPromoLoading(true);
+    setPromoError("");
+    setAppliedPromo(null);
+
+    try {
+      const q = query(
+        collection(db, "promoCodes"),
+        where("code", "==", code),
+        where("isActive", "==", true)
+      );
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        setPromoError("Invalid or expired promo code.");
+        setPromoLoading(false);
+        return;
+      }
+
+      const promoDoc = snap.docs[0];
+      const data = promoDoc.data();
+      const usedBy: string[] = data.usedBy ?? [];
+
+      if (usedBy.includes(user.uid)) {
+        setPromoError("You've already used this promo code.");
+        setPromoLoading(false);
+        return;
+      }
+
+      setAppliedPromo({
+        docId: promoDoc.id,
+        code: data.code,
+        discountType: data.discountType,
+        discountValue: data.discountValue ?? 0,
+      });
+      toast({
+        title: "Promo applied! 🎉",
+        description:
+          data.discountType === "free_delivery"
+            ? "Free delivery applied."
+            : `${data.discountValue}% off your order.`,
+      });
+    } catch {
+      setPromoError("Something went wrong. Please try again.");
+    }
+    setPromoLoading(false);
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoInput("");
+    setPromoError("");
+  };
+
+  // ── Mark promo as used for this user ─────────────────────────────────────
+  const markPromoUsed = async () => {
+    if (!appliedPromo || !user) return;
+    try {
+      await updateDoc(doc(db, "promoCodes", appliedPromo.docId), {
+        usedBy: arrayUnion(user.uid),
+      });
+    } catch (err) {
+      console.error("Failed to mark promo used:", err);
+    }
+  };
+
+  // ── Place order (shared logic) ────────────────────────────────────────────
+  const buildOrderPayload = (paymentId: string) => ({
+    customerName: activeAddress!.fullName,
+    customerEmail: resolvedEmail,
+    paymentId,
+    amount: finalAmount,
+    deliveryCharge,
+    subtotalDiscount,
+    promoCode: appliedPromo?.code ?? null,
+    paymentMethod: paymentMethod === "cod" ? "cod" : "online",
+    address: activeAddress,
+    items: items.map((i) => ({
+      name: i.name,
+      price: i.price,
+      cartQuantity: i.cartQuantity,
+      selectedSize: i.selectedSize || null,
+      image: i.image || null,
+    })),
+    status: "order_placed",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    statusHistory: [{ status: "order_placed", timestamp: Date.now() }],
+  });
+
   const handlePay = async () => {
-    // Hard guard — button is also disabled when !emailValid, but
-    // this is a final safety net before touching Firestore or EmailJS.
     if (!emailValid) {
       toast({ title: "Please enter a valid email address for order confirmation", variant: "destructive" });
       return;
     }
-
     if (!activeAddress) {
       toast({ title: "Please select or enter a delivery address", variant: "destructive" });
       return;
@@ -132,32 +255,14 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
       .map((i) => `${i.name}${i.selectedSize ? ` (${i.selectedSize})` : ""} × ${i.cartQuantity} = ₹${(i.price * i.cartQuantity).toLocaleString("en-IN")}`)
       .join("\n");
 
-    // ── Cash on Delivery ──────────────────────────────────────────────
+    // ── COD ───────────────────────────────────────────────────────────────
     if (paymentMethod === "cod") {
       setPaying(true);
-      const now = Date.now();
       try {
-        const orderRef = await addDoc(collection(db, "orders"), {
-          customerName: activeAddress.fullName,
-          customerEmail: resolvedEmail,
-          paymentId: "COD",
-          amount: finalAmount,
-          deliveryCharge: DELIVERY_CHARGE,
-          paymentMethod: "cod",
-          address: activeAddress,
-          items: items.map((i) => ({
-            name: i.name,
-            price: i.price,
-            cartQuantity: i.cartQuantity,
-            selectedSize: i.selectedSize || null,
-            image: i.image || null,
-          })),
-          status: "order_placed",
-          createdAt: now,
-          updatedAt: now,
-          statusHistory: [{ status: "order_placed", timestamp: now }],
-        });
+        const payload = buildOrderPayload("COD");
+        const orderRef = await addDoc(collection(db, "orders"), payload);
         await updateDoc(orderRef, { orderId: orderRef.id });
+        await markPromoUsed();
         await sendOrderEmails({
           customerName: activeAddress.fullName,
           customerEmail: resolvedEmail,
@@ -178,7 +283,9 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
         state: {
           paymentId: "COD",
           amount: finalAmount,
-          deliveryCharge: DELIVERY_CHARGE,
+          deliveryCharge,
+          subtotalDiscount,
+          promoCode: appliedPromo?.code ?? null,
           paymentMethod: "cod",
           address: activeAddress,
           items: items.map((i) => ({
@@ -190,7 +297,7 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
       return;
     }
 
-    // ── Online Payment via Razorpay ───────────────────────────────────
+    // ── Razorpay ──────────────────────────────────────────────────────────
     const options: any = {
       key: "rzp_live_Siq5Fd24TZ9Zxl",
       amount: finalAmount * 100,
@@ -202,29 +309,11 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
       theme: { color: "#7c3aed" },
       handler: async (response: any) => {
         setPaying(true);
-        const now = Date.now();
         try {
-          const orderRef = await addDoc(collection(db, "orders"), {
-            customerName: activeAddress.fullName,
-            customerEmail: resolvedEmail,
-            paymentId: response.razorpay_payment_id,
-            amount: finalAmount,
-            deliveryCharge: DELIVERY_CHARGE,
-            paymentMethod: "online",
-            address: activeAddress,
-            items: items.map((i) => ({
-              name: i.name,
-              price: i.price,
-              cartQuantity: i.cartQuantity,
-              selectedSize: i.selectedSize || null,
-              image: i.image || null,
-            })),
-            status: "order_placed",
-            createdAt: now,
-            updatedAt: now,
-            statusHistory: [{ status: "order_placed", timestamp: now }],
-          });
+          const payload = buildOrderPayload(response.razorpay_payment_id);
+          const orderRef = await addDoc(collection(db, "orders"), payload);
           await updateDoc(orderRef, { orderId: orderRef.id });
+          await markPromoUsed();
           await sendOrderEmails({
             customerName: activeAddress.fullName,
             customerEmail: resolvedEmail,
@@ -242,7 +331,9 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
           state: {
             paymentId: response.razorpay_payment_id,
             amount: finalAmount,
-            deliveryCharge: DELIVERY_CHARGE,
+            deliveryCharge,
+            subtotalDiscount,
+            promoCode: appliedPromo?.code ?? null,
             paymentMethod: "online",
             address: activeAddress,
             items: items.map((i) => ({
@@ -281,19 +372,14 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
         {/* Scrollable body */}
         <div className="px-4 py-5 space-y-5 max-h-[60vh] overflow-y-auto sm:px-6 sm:max-h-[65vh]">
 
-          {/* ── Email input — rendered FIRST so it's always visible at the top.
-               Only shown for phone-auth users whose account has no email.   ── */}
+          {/* Email override for phone-auth users */}
           {needsEmailInput && !loadingSaved && (
             <div className="space-y-2">
-              <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Contact
-              </p>
+              <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Contact</p>
               <div className="space-y-1">
                 <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Email Address *{" "}
-                  <span className="normal-case font-normal text-muted-foreground/70">
-                    (for order confirmation)
-                  </span>
+                  <span className="normal-case font-normal text-muted-foreground/70">(for order confirmation)</span>
                 </label>
                 <Input
                   type="email"
@@ -311,7 +397,7 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             </div>
           )}
 
-          {/* ── Saved addresses ── */}
+          {/* Saved addresses */}
           {loadingSaved && (
             <div className="space-y-2">
               <div className="h-16 animate-pulse rounded-xl bg-muted" />
@@ -321,9 +407,7 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
 
           {!loadingSaved && savedAddresses.length > 0 && (
             <div className="space-y-2">
-              <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Saved Addresses
-              </p>
+              <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Saved Addresses</p>
               {savedAddresses.map((addr, idx) => (
                 <label
                   key={idx}
@@ -344,9 +428,7 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-body text-sm font-semibold text-foreground">{addr.fullName}</p>
                       {idx === 0 && (
-                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 font-body text-[10px] font-semibold text-primary">
-                          Default
-                        </span>
+                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 font-body text-[10px] font-semibold text-primary">Default</span>
                       )}
                     </div>
                     <p className="font-body text-xs text-muted-foreground">{addr.phone}</p>
@@ -359,7 +441,6 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
                   )}
                 </label>
               ))}
-
               <label
                 className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 transition-colors ${
                   useNewAddress
@@ -380,13 +461,11 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             </div>
           )}
 
-          {/* ── New address form ── */}
+          {/* New address form */}
           {(useNewAddress || savedAddresses.length === 0) && !loadingSaved && (
             <div className="space-y-3">
               {savedAddresses.length > 0 && (
-                <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  New Address
-                </p>
+                <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">New Address</p>
               )}
               <div className="space-y-1">
                 <label className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Full Name *</label>
@@ -426,47 +505,24 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             </div>
           )}
 
-          {/* ── Payment Method ── */}
+          {/* Payment Method */}
           <div className="space-y-2">
-            <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Payment Method
-            </p>
+            <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Payment Method</p>
             <div className="grid grid-cols-2 gap-3">
-              <label
-                className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3.5 transition-colors ${
-                  paymentMethod === "online"
-                    ? "border-primary/40 bg-primary/[0.03]"
-                    : "border-border hover:border-border/80 hover:bg-muted/20"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="payment-method"
-                  className="accent-primary"
-                  checked={paymentMethod === "online"}
-                  onChange={() => setPaymentMethod("online")}
-                />
+              <label className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3.5 transition-colors ${
+                paymentMethod === "online" ? "border-primary/40 bg-primary/[0.03]" : "border-border hover:border-border/80 hover:bg-muted/20"
+              }`}>
+                <input type="radio" name="payment-method" className="accent-primary" checked={paymentMethod === "online"} onChange={() => setPaymentMethod("online")} />
                 <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <p className="font-body text-sm font-semibold text-foreground">Pay Online</p>
                   <p className="font-body text-[10px] text-muted-foreground">UPI / Card / Net banking</p>
                 </div>
               </label>
-
-              <label
-                className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3.5 transition-colors ${
-                  paymentMethod === "cod"
-                    ? "border-primary/40 bg-primary/[0.03]"
-                    : "border-border hover:border-border/80 hover:bg-muted/20"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="payment-method"
-                  className="accent-primary"
-                  checked={paymentMethod === "cod"}
-                  onChange={() => setPaymentMethod("cod")}
-                />
+              <label className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3.5 transition-colors ${
+                paymentMethod === "cod" ? "border-primary/40 bg-primary/[0.03]" : "border-border hover:border-border/80 hover:bg-muted/20"
+              }`}>
+                <input type="radio" name="payment-method" className="accent-primary" checked={paymentMethod === "cod"} onChange={() => setPaymentMethod("cod")} />
                 <Truck className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <p className="font-body text-sm font-semibold text-foreground">Cash on Delivery</p>
@@ -476,7 +532,67 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             </div>
           </div>
 
-          {/* ── Order Summary ── */}
+          {/* ── Promo Code ── */}
+          <div className="space-y-2">
+            <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Promo Code</p>
+
+            {appliedPromo ? (
+              /* Applied state */
+              <div className="flex items-center justify-between rounded-xl border border-green-300 bg-green-50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                  <div>
+                    <p className="font-body text-sm font-semibold text-green-800">{appliedPromo.code}</p>
+                    <p className="font-body text-xs text-green-600">
+                      {appliedPromo.discountType === "free_delivery"
+                        ? "Free delivery applied"
+                        : `${appliedPromo.discountValue}% off applied — saving ₹${subtotalDiscount.toLocaleString("en-IN")}`}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleRemovePromo}
+                  className="text-green-600 hover:text-green-800 transition-colors"
+                  aria-label="Remove promo code"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              /* Input state */
+              <div className="space-y-1.5">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    <Input
+                      placeholder="Enter promo code"
+                      value={promoInput}
+                      onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoError(""); }}
+                      onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
+                      className="pl-9 font-mono text-sm uppercase tracking-widest"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleApplyPromo}
+                    disabled={promoLoading || !promoInput.trim()}
+                    className="shrink-0 gap-1"
+                  >
+                    {promoLoading
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <><span>Apply</span><ChevronRight className="h-3.5 w-3.5" /></>
+                    }
+                  </Button>
+                </div>
+                {promoError && (
+                  <p className="font-body text-xs text-destructive">{promoError}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Order Summary */}
           <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
             <p className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order Summary</p>
             {items.map((item) => (
@@ -493,9 +609,19 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
               <span>Subtotal</span>
               <span>₹{totalPrice.toLocaleString("en-IN")}</span>
             </div>
+            {subtotalDiscount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Discount ({appliedPromo?.discountValue}% off)</span>
+                <span>− ₹{subtotalDiscount.toLocaleString("en-IN")}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm text-muted-foreground">
               <span>Delivery charge</span>
-              <span>₹{DELIVERY_CHARGE.toLocaleString("en-IN")}</span>
+              <span className={deliveryCharge === 0 ? "text-green-600 line-through decoration-green-600" : ""}>
+                {deliveryCharge === 0
+                  ? `₹${DELIVERY_CHARGE} FREE`
+                  : `₹${DELIVERY_CHARGE.toLocaleString("en-IN")}`}
+              </span>
             </div>
             <div className="border-t border-border pt-2 flex justify-between font-semibold text-sm">
               <span>Total</span>
@@ -505,10 +631,9 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
               <p className="font-body text-xs text-amber-600">✦ Pay ₹{finalAmount.toLocaleString("en-IN")} in cash at delivery</p>
             )}
           </div>
-
         </div>
 
-        {/* CTA — disabled until email is confirmed valid */}
+        {/* CTA */}
         <div className="px-4 py-4 border-t border-border sm:px-6">
           <Button
             className="w-full rounded-full text-base py-5 gap-2"
@@ -530,7 +655,6 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             </p>
           )}
         </div>
-
       </div>
     </div>
   );
