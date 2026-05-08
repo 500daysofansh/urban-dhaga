@@ -3,30 +3,44 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle, ArrowLeft, Package, MapPin, Truck, CreditCard } from "lucide-react";
+import { CheckCircle, ArrowLeft, Package, MapPin, Truck, CreditCard, Hash, Copy } from "lucide-react";
 import { ShippingAddress } from "@/types/order";
+import { toast } from "sonner";
 
 const OrderConfirmation = () => {
   const location = useLocation();
   const {
+    orderId,
     paymentId,
     amount,
     deliveryCharge,
+    subtotalDiscount,
+    promoCode,
     paymentMethod,
     items,
     address,
   } = (location.state as {
+    orderId: string;
     paymentId: string;
     amount: number;
     deliveryCharge?: number;
+    subtotalDiscount?: number;
+    promoCode?: string | null;
     paymentMethod?: "cod" | "online";
     address: ShippingAddress;
     items: { name: string; cartQuantity: number; price: number; selectedSize?: string }[];
-  }) || { paymentId: "", amount: 0, deliveryCharge: 0, paymentMethod: "online", items: [], address: null };
+  }) || { orderId: "", paymentId: "", amount: 0, deliveryCharge: 0, subtotalDiscount: 0, promoCode: null, paymentMethod: "online", items: [], address: null };
 
   const isCOD = paymentMethod === "cod";
   const subtotal = items?.reduce((sum, i) => sum + i.price * i.cartQuantity, 0) ?? 0;
   const charge = deliveryCharge ?? 0;
+  const discount = subtotalDiscount ?? 0;
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success(`${label} copied!`);
+    });
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -41,13 +55,38 @@ const OrderConfirmation = () => {
           </h1>
           <p className="text-muted-foreground font-body">
             {isCOD
-              ? "Your order has been placed. Please keep ₹" + amount.toLocaleString("en-IN") + " ready at the time of delivery."
+              ? `Your order has been placed. Please keep ₹${amount.toLocaleString("en-IN")} ready at the time of delivery.`
               : "Thank you for your purchase. Your payment was successful."}
           </p>
         </div>
 
         <Card className="w-full">
           <CardContent className="space-y-4 p-6">
+
+            {/* ── Order ID — prominent ── */}
+            {orderId && (
+              <div className="rounded-xl border-2 border-primary/20 bg-primary/5 px-4 py-3">
+                <p className="mb-1 font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Order ID
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Hash className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="font-mono text-sm font-bold text-primary truncate">{orderId}</span>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(orderId, "Order ID")}
+                    className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                    aria-label="Copy order ID"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <p className="mt-1.5 font-body text-[11px] text-muted-foreground">
+                  Save this ID to track or query your order
+                </p>
+              </div>
+            )}
 
             {/* Payment info */}
             <div className="flex items-center justify-between text-sm">
@@ -60,10 +99,19 @@ const OrderConfirmation = () => {
               </span>
             </div>
 
-            {!isCOD && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground font-body">Payment ID</span>
-                <span className="font-mono text-foreground text-xs">{paymentId}</span>
+            {!isCOD && paymentId && (
+              <div className="flex items-center justify-between text-sm gap-2">
+                <span className="text-muted-foreground font-body shrink-0">Payment ID</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="font-mono text-foreground text-xs truncate">{paymentId}</span>
+                  <button
+                    onClick={() => copyToClipboard(paymentId, "Payment ID")}
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Copy payment ID"
+                  >
+                    <Copy className="h-3 w-3" />
+                  </button>
+                </div>
               </div>
             )}
 
@@ -91,9 +139,15 @@ const OrderConfirmation = () => {
                     <span>Subtotal</span>
                     <span>₹{subtotal.toLocaleString("en-IN")}</span>
                   </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-sm text-green-600 font-body">
+                      <span>Discount {promoCode ? `(${promoCode})` : ""}</span>
+                      <span>− ₹{discount.toLocaleString("en-IN")}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm text-muted-foreground font-body">
                     <span>Delivery charge</span>
-                    <span>₹{charge.toLocaleString("en-IN")}</span>
+                    <span>{charge === 0 ? <span className="text-green-600">FREE</span> : `₹${charge.toLocaleString("en-IN")}`}</span>
                   </div>
                   <div className="flex justify-between text-sm font-semibold text-foreground pt-1 border-t">
                     <span>{isCOD ? "Amount to pay on delivery" : "Amount Paid"}</span>
