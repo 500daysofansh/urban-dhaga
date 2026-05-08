@@ -4,9 +4,8 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc } from "firebase
 import { Order, OrderStatus } from "@/types/order";
 import { STATUS_META } from "@/lib/email";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ChevronDown, ChevronUp, Package } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, Package, Hash, Copy } from "lucide-react";
 
-// Progress steps — cancelled is separate, not part of the linear flow
 const STATUS_ORDER: OrderStatus[] = [
   "order_placed",
   "meesho_ordered",
@@ -16,8 +15,6 @@ const STATUS_ORDER: OrderStatus[] = [
   "order_delivered",
 ];
 
-// Admin-actionable forward transitions (never include order_cancelled —
-// admins should not be able to mark an order cancelled from here)
 const STATUS_BUTTONS: { status: OrderStatus; color: string }[] = [
   { status: "meesho_ordered",   color: "bg-blue-500 hover:bg-blue-600" },
   { status: "order_processed",  color: "bg-yellow-500 hover:bg-yellow-600" },
@@ -69,8 +66,13 @@ function OrderCard({ order }: { order: Order }) {
   const isCancelled = order.status === "order_cancelled";
   const isDelivered = order.status === "order_delivered";
   const isFinal     = isCancelled || isDelivered;
+  const currentIdx  = STATUS_ORDER.indexOf(order.status);
 
-  const currentIdx = STATUS_ORDER.indexOf(order.status); // -1 for cancelled
+  const copy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() =>
+      toast({ title: `${label} copied!` })
+    );
+  };
 
   const handleUpdate = async (newStatus: OrderStatus) => {
     setUpdating(newStatus);
@@ -109,6 +111,22 @@ function OrderCard({ order }: { order: Order }) {
             )}
           </div>
           <p className="text-xs text-muted-foreground">{order.customerEmail}</p>
+
+          {/* ── Order ID visible in header ── */}
+          <div className="flex items-center gap-1.5">
+            <Hash className="h-3 w-3 text-primary/60" />
+            <span className="font-mono text-[11px] font-semibold text-primary/80 tracking-wide">
+              {order.orderId || order.id}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); copy(order.orderId || order.id, "Order ID"); }}
+              className="rounded p-0.5 text-muted-foreground hover:text-primary transition-colors"
+              aria-label="Copy order ID"
+            >
+              <Copy className="h-3 w-3" />
+            </button>
+          </div>
+
           <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
           {isCancelled && order.cancellationReason && (
             <p className="text-xs text-red-500">Reason: {order.cancellationReason}</p>
@@ -129,6 +147,43 @@ function OrderCard({ order }: { order: Order }) {
       {expanded && (
         <div className="space-y-5 border-t border-border px-5 py-4">
 
+          {/* Order ID + Payment ID block */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Order ID</p>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs font-bold text-primary truncate">
+                  {order.orderId || order.id}
+                </span>
+                <button
+                  onClick={() => copy(order.orderId || order.id, "Order ID")}
+                  className="shrink-0 rounded p-1 text-muted-foreground hover:text-primary transition-colors"
+                  aria-label="Copy order ID"
+                >
+                  <Copy className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Payment ID</p>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs text-muted-foreground truncate">
+                  {order.paymentId || "—"}
+                </span>
+                {order.paymentId && (
+                  <button
+                    onClick={() => copy(order.paymentId, "Payment ID")}
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Copy payment ID"
+                  >
+                    <Copy className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Items */}
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</p>
@@ -142,6 +197,23 @@ function OrderCard({ order }: { order: Order }) {
                 </span>
               </div>
             ))}
+            {/* Price summary */}
+            <div className="mt-2 space-y-1 border-t pt-2">
+              {(order as any).subtotalDiscount > 0 && (
+                <div className="flex justify-between text-xs text-green-600">
+                  <span>Discount {(order as any).promoCode ? `(${(order as any).promoCode})` : ""}</span>
+                  <span>− ₹{(order as any).subtotalDiscount.toLocaleString("en-IN")}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Delivery</span>
+                <span>{(order as any).deliveryCharge === 0 ? "FREE" : `₹${(order as any).deliveryCharge ?? 60}`}</span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold">
+                <span>Total</span>
+                <span>₹{order.amount.toLocaleString("en-IN")}</span>
+              </div>
+            </div>
           </div>
 
           {/* Address */}
@@ -154,14 +226,6 @@ function OrderCard({ order }: { order: Order }) {
               {order.address.street}, {order.address.city}<br />
               {order.address.state} — {order.address.pincode}
             </p>
-          </div>
-
-          {/* Payment ID */}
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Payment ID
-            </p>
-            <p className="font-mono text-xs text-muted-foreground">{order.paymentId}</p>
           </div>
 
           {/* Cancellation details */}
@@ -182,7 +246,7 @@ function OrderCard({ order }: { order: Order }) {
             </div>
           )}
 
-          {/* Progress bar — only for non-cancelled orders */}
+          {/* Progress bar */}
           {!isCancelled && (
             <div>
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -204,7 +268,7 @@ function OrderCard({ order }: { order: Order }) {
             </div>
           )}
 
-          {/* Status update buttons — hidden for cancelled and delivered */}
+          {/* Status buttons */}
           {!isFinal && (
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -228,10 +292,7 @@ function OrderCard({ order }: { order: Order }) {
                           : "border border-border bg-background text-foreground hover:bg-muted"
                         }`}
                     >
-                      {updating === status
-                        ? <Loader2 className="h-3 w-3 animate-spin" />
-                        : null
-                      }
+                      {updating === status && <Loader2 className="h-3 w-3 animate-spin" />}
                       {STATUS_META[status].label}
                     </button>
                   );
@@ -281,7 +342,6 @@ export default function OrdersPanel() {
 
   return (
     <div className="space-y-5">
-      {/* Filter tabs */}
       <div className="flex flex-wrap gap-2">
         {allStatuses.map((key) => {
           const label = key === "all" ? "All" : STATUS_META[key].label;
@@ -314,7 +374,6 @@ export default function OrdersPanel() {
         })}
       </div>
 
-      {/* Orders list */}
       {filtered.length === 0 ? (
         <div className="py-16 text-center">
           <Package className="mx-auto mb-3 h-10 w-10 opacity-30 text-muted-foreground" />
