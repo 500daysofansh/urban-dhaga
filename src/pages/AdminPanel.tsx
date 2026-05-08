@@ -494,7 +494,7 @@ const AdminPanel = () => {
                       <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                         <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                         <SelectContent>
-                          {["Sarees", "Kurtas", "Dupattas", "Accessories", "Lehengas", "Jewellery", "Western"].map((cat) => (
+                          {["Sarees", "Kurtis", "Dupattas", "Accessories", "Lehengas", "Jewellery", "Western"].map((cat) => (
                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                           ))}
                         </SelectContent>
