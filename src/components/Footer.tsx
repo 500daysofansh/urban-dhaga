@@ -7,7 +7,7 @@ import { toast } from "sonner";
 const QUICK_LINKS = [
   { name: "New Arrivals", category: "New Arrivals" },
   { name: "Sarees", category: "Sarees" },
-  { name: "Kurtas", category: "Kurtas" },
+  { name: "Kurti", category: "Kurti" },
   { name: "Dupattas", category: "Dupattas" },
   { name: "Accessories", category: "Accessories" },
 ];
