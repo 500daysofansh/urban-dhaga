@@ -15,7 +15,7 @@ import {
 const PAGE_SIZE = 12;
 
 const CATEGORY_ORDER = [
-  "Sarees", "Kurtas", "Lehengas", "Dupattas",
+  "Sarees", "Kurtis", "Lehengas", "Dupattas",
   "Western", "Accessories", "Jewellery",
 ];
 
