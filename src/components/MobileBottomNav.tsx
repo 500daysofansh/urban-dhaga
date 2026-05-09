@@ -2,18 +2,20 @@ import { Link, useLocation } from "react-router-dom";
 import { Home, Search, Heart, ShoppingBag, User } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useWishlist } from "@/contexts/WishlistContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 const MobileBottomNav = () => {
   const location = useLocation();
   const { totalItems: cartTotal } = useCart();
   const { totalItems: wishlistTotal } = useWishlist();
+  const { user } = useAuth();
 
   const tabs = [
-    { icon: Home,       label: "Home",     href: "/" },
-    { icon: Search,     label: "Search",   href: "/#products" },
-    { icon: Heart,      label: "Wishlist", href: "/wishlist", badge: wishlistTotal },
-    { icon: ShoppingBag, label: "Cart",   href: "/cart",     badge: cartTotal },
-    { icon: User,       label: "Account",  href: "/login" },
+    { icon: Home,        label: "Home",     href: "/" },
+    { icon: Search,      label: "Search",   href: "/#products" },
+    { icon: Heart,       label: "Wishlist", href: "/wishlist", badge: wishlistTotal },
+    { icon: ShoppingBag, label: "Cart",     href: "/cart",     badge: cartTotal },
+    { icon: User,        label: "Account",  href: user ? "/account" : "/login" },
   ];
 
   return (
