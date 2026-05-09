@@ -7,8 +7,7 @@ const ADMIN_TPL   = "template_bv8hdi4";
 const STATUS_TPL  = "template_status_update";
 const ADMIN_EMAIL = "urbandhagee@gmail.com";
 
-// In dev, Vite proxies /api → localhost serverless emulation.
-// In production on Vercel, /api/send-otp hits the real function.
+// .cjs extension because package.json has "type":"module"
 const OTP_ENDPOINT = "/api/send-otp";
 
 export interface OrderEmailData {
@@ -43,10 +42,6 @@ async function sendTemplate(templateId: string, params: Record<string, string>) 
   if (!res.ok) throw new Error(`EmailJS error: ${await res.text()}`);
 }
 
-/**
- * Send a 6-digit OTP to the given email via our Vercel serverless function
- * which uses Gmail App Password + Nodemailer under the hood.
- */
 export async function sendOtpEmail(to: string, otp: string): Promise<void> {
   const res = await fetch(OTP_ENDPOINT, {
     method: "POST",
