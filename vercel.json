@@ -1,8 +1,9 @@
 {
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
-    { "source": "/product/:id", "destination": "/api/prerender?id=:id" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/sitemap.xml",   "destination": "/api/sitemap" },
+    { "source": "/product/:id",   "destination": "/api/prerender?id=:id" },
+    { "source": "/api/(.*)",      "destination": "/api/$1" },
+    { "source": "/(.*)",          "destination": "/index.html" }
   ]
 }
