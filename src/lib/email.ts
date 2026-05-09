@@ -5,7 +5,11 @@ const PUBLIC_KEY  = "a5MUx20kzvERzjdBr";
 const CUST_TPL    = "template_fqu1999";
 const ADMIN_TPL   = "template_bv8hdi4";
 const STATUS_TPL  = "template_status_update";
-const ADMIN_EMAIL = "500daysofansh@gmail.com"; // your inbox — admin alerts always go here
+const ADMIN_EMAIL = "urbandhagee@gmail.com";
+
+// In dev, Vite proxies /api → localhost serverless emulation.
+// In production on Vercel, /api/send-otp hits the real function.
+const OTP_ENDPOINT = "/api/send-otp";
 
 export interface OrderEmailData {
   customerName:  string;
@@ -39,10 +43,25 @@ async function sendTemplate(templateId: string, params: Record<string, string>) 
   if (!res.ok) throw new Error(`EmailJS error: ${await res.text()}`);
 }
 
+/**
+ * Send a 6-digit OTP to the given email via our Vercel serverless function
+ * which uses Gmail App Password + Nodemailer under the hood.
+ */
+export async function sendOtpEmail(to: string, otp: string): Promise<void> {
+  const res = await fetch(OTP_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, otp }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to send OTP email");
+  }
+}
+
 export async function sendOrderEmails(data: OrderEmailData) {
   const amount = `₹${data.amount.toLocaleString("en-IN")}`;
   await Promise.all([
-    // Customer confirmation — to_email is the customer
     sendTemplate(CUST_TPL, {
       to_name:          data.customerName,
       to_email:         data.customerEmail,
@@ -51,9 +70,8 @@ export async function sendOrderEmails(data: OrderEmailData) {
       delivery_address: data.addressLine,
       items_summary:    data.itemsSummary,
     }),
-    // Admin alert — to_email is always YOUR inbox, never the customer's
     sendTemplate(ADMIN_TPL, {
-      to_email:         ADMIN_EMAIL,       // ← hardcoded: admin template always goes to you
+      to_email:         ADMIN_EMAIL,
       customer_name:    data.customerName,
       customer_email:   data.customerEmail,
       payment_id:       data.paymentId,
