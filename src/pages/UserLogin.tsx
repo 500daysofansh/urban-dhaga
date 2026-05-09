@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { ArrowLeft, Mail, Lock, Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
+import { sendOtpEmail } from "@/lib/email";
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -15,15 +17,18 @@ const GoogleIcon = () => (
   </svg>
 );
 
-// User-agent based — matches AuthContext
 const isMobileDevice = () =>
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-// ── Shared class applied to every <Input> ─────────────────────────────────────
-// iOS Safari auto-zooms when a focused input has font-size < 16px.
-// `text-base` (16px) on mobile prevents the zoom; `sm:text-sm` (14px) restores
-// the smaller visual size on wider screens where zoom isn't an issue.
 const INPUT_CLS = "text-base sm:text-sm touch-manipulation";
+
+const OTP_EXPIRY_SECONDS = 300; // 5 minutes
+
+function generateOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const UserLogin = () => {
   const [isSignup, setIsSignup] = useState(false);
@@ -35,19 +40,163 @@ const UserLogin = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showReset, setShowReset] = useState(false);
 
+  // OTP state
+  const [otpStep, setOtpStep] = useState(false);          // show OTP screen?
+  const [otpValue, setOtpValue] = useState("");            // what user typed
+  const [otpSecret, setOtpSecret] = useState("");          // what we generated
+  const [otpExpiry, setOtpExpiry] = useState<number>(0);  // timestamp ms
+  const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const { login, signup, loginWithGoogle, resetPassword } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Countdown timer while OTP screen is visible
+  useEffect(() => {
+    if (!otpStep) return;
+    timerRef.current = setInterval(() => {
+      const left = Math.max(0, Math.round((otpExpiry - Date.now()) / 1000));
+      setOtpSecondsLeft(left);
+      if (left === 0 && timerRef.current) clearInterval(timerRef.current);
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [otpStep, otpExpiry]);
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  const resetOtpState = () => {
+    setOtpStep(false);
+    setOtpValue("");
+    setOtpSecret("");
+    setOtpExpiry(0);
+    setOtpSecondsLeft(0);
+    if (timerRef.current) clearInterval(timerRef.current);
+  };
+
+  const formatTime = (s: number) =>
+    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+  // ── Send OTP ───────────────────────────────────────────────────────────────
+
+  const dispatchOtp = async (targetEmail: string) => {
+    const otp    = generateOtp();
+    const expiry = Date.now() + OTP_EXPIRY_SECONDS * 1000;
+    setOtpSending(true);
+    try {
+      await sendOtpEmail(targetEmail, otp);
+      setOtpSecret(otp);
+      setOtpExpiry(expiry);
+      setOtpSecondsLeft(OTP_EXPIRY_SECONDS);
+      setOtpValue("");
+      setOtpStep(true);
+      toast({
+        title: "OTP sent! 📧",
+        description: `Check ${targetEmail} for your 6-digit code.`,
+      });
+    } catch {
+      toast({
+        title: "Couldn't send OTP",
+        description: "Check the email address and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  // ── Signup form submit → trigger OTP ──────────────────────────────────────
+
+  const handleSignupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      toast({ title: "Passwords don't match", variant: "destructive" });
+      return;
+    }
+    if (password.length < 6) {
+      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    await dispatchOtp(email);
+  };
+
+  // ── Verify OTP → create account ───────────────────────────────────────────
+
+  const handleVerifyOtp = async () => {
+    if (otpValue.length !== 6) return;
+
+    if (Date.now() > otpExpiry) {
+      toast({ title: "OTP expired", description: "Request a new code.", variant: "destructive" });
+      return;
+    }
+
+    if (otpValue !== otpSecret) {
+      toast({ title: "Incorrect code", description: "Please check the OTP and try again.", variant: "destructive" });
+      setOtpValue("");
+      return;
+    }
+
+    // OTP matched → create the Firebase account
+    setOtpVerifying(true);
+    try {
+      await signup(email, password);
+      resetOtpState();
+      toast({ title: "Account created! 🎉", description: "Welcome to Urban Dhage." });
+      navigate("/");
+    } catch (error: any) {
+      const code = error?.code || "";
+      let message = "Something went wrong. Please try again.";
+      if (code === "auth/email-already-in-use")
+        message = "This email is already registered. Try signing in.";
+      toast({ title: "Signup failed", description: message, variant: "destructive" });
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
+  // Auto-verify as soon as all 6 digits are entered
+  useEffect(() => {
+    if (otpValue.length === 6) handleVerifyOtp();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpValue]);
+
+  // ── Login form submit ──────────────────────────────────────────────────────
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 6) {
+      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await login(email, password);
+      toast({ title: "Welcome back! 👋" });
+      navigate("/");
+    } catch (error: any) {
+      const code = error?.code || "";
+      let message = "Something went wrong. Please try again.";
+      if (code === "auth/invalid-credential" || code === "auth/wrong-password")
+        message = "Invalid email or password.";
+      else if (code === "auth/user-not-found")
+        message = "No account found with this email.";
+      else if (code === "auth/too-many-requests")
+        message = "Too many attempts. Please try again later.";
+      toast({ title: "Login failed", description: message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Google login ───────────────────────────────────────────────────────────
 
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
     try {
       await loginWithGoogle();
-      if (isMobileDevice()) {
-        // Redirect flow — page navigates away, spinner stays visible
-        return;
-      }
-      // Desktop popup resolves immediately
+      if (isMobileDevice()) return; // redirect flow — page navigates away
       toast({ title: "Welcome! 👋", description: "Signed in with Google." });
       navigate("/");
     } catch (error: any) {
@@ -63,38 +212,7 @@ const UserLogin = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSignup && password !== confirmPassword) {
-      toast({ title: "Passwords don't match", variant: "destructive" });
-      return;
-    }
-    if (password.length < 6) {
-      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
-      return;
-    }
-    setIsLoading(true);
-    try {
-      if (isSignup) {
-        await signup(email, password);
-        toast({ title: "Account created! 🎉", description: "Welcome to Urban Dhage." });
-      } else {
-        await login(email, password);
-        toast({ title: "Welcome back! 👋" });
-      }
-      navigate("/");
-    } catch (error: any) {
-      const code = error?.code || "";
-      let message = "Something went wrong. Please try again.";
-      if (code === "auth/email-already-in-use") message = "This email is already registered. Try signing in.";
-      else if (code === "auth/invalid-credential" || code === "auth/wrong-password") message = "Invalid email or password.";
-      else if (code === "auth/user-not-found") message = "No account found with this email.";
-      else if (code === "auth/too-many-requests") message = "Too many attempts. Please try again later.";
-      toast({ title: isSignup ? "Signup failed" : "Login failed", description: message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // ── Password reset ─────────────────────────────────────────────────────────
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,16 +223,23 @@ const UserLogin = () => {
     setIsLoading(true);
     try {
       await resetPassword(email);
-      toast({ title: "Reset email sent! 📧", description: "Check your inbox for a password reset link." });
+      toast({
+        title: "Reset email sent! 📧",
+        description: "Check your inbox for a password reset link.",
+      });
       setShowReset(false);
     } catch {
-      toast({ title: "Failed to send reset email", description: "Make sure the email is correct.", variant: "destructive" });
+      toast({
+        title: "Failed to send reset email",
+        description: "Make sure the email is correct.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ── Password reset view ───────────────────────────────────────────────────
+  // ── Password reset view ────────────────────────────────────────────────────
 
   if (showReset) {
     return (
@@ -126,7 +251,6 @@ const UserLogin = () => {
             </h1>
             <p className="mt-2 font-body text-sm text-muted-foreground">Reset your password</p>
           </div>
-
           <form onSubmit={handleReset} className="space-y-4">
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -135,7 +259,6 @@ const UserLogin = () => {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                // iOS zoom fix: 16px on mobile, 14px on sm+
                 className={`pl-10 font-body ${INPUT_CLS}`}
                 required
               />
@@ -146,7 +269,6 @@ const UserLogin = () => {
                 : "Send Reset Link"}
             </Button>
           </form>
-
           <button
             onClick={() => setShowReset(false)}
             className="mx-auto flex items-center gap-1 font-body text-sm text-muted-foreground hover:text-foreground"
@@ -158,7 +280,98 @@ const UserLogin = () => {
     );
   }
 
-  // ── Main login / signup view ──────────────────────────────────────────────
+  // ── OTP verification view ──────────────────────────────────────────────────
+
+  if (otpStep) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm space-y-6">
+
+          {/* Header */}
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <ShieldCheck className="h-7 w-7 text-primary" />
+            </div>
+            <h1 className="font-heading text-2xl font-bold text-foreground">Verify your email</h1>
+            <p className="mt-2 font-body text-sm text-muted-foreground">
+              We sent a 6-digit code to
+            </p>
+            <p className="font-body text-sm font-semibold text-foreground">{email}</p>
+          </div>
+
+          {/* OTP input — uses the input-otp component already in package.json */}
+          <div className="flex flex-col items-center gap-4">
+            <InputOTP
+              maxLength={6}
+              value={otpValue}
+              onChange={setOtpValue}
+              disabled={otpVerifying || otpSecondsLeft === 0}
+            >
+              <InputOTPGroup>
+                <InputOTPSlot index={0} />
+                <InputOTPSlot index={1} />
+                <InputOTPSlot index={2} />
+                <InputOTPSlot index={3} />
+                <InputOTPSlot index={4} />
+                <InputOTPSlot index={5} />
+              </InputOTPGroup>
+            </InputOTP>
+
+            {/* Timer */}
+            {otpSecondsLeft > 0 ? (
+              <p className="font-body text-sm text-muted-foreground">
+                Code expires in{" "}
+                <span className={`font-semibold ${otpSecondsLeft <= 60 ? "text-destructive" : "text-foreground"}`}>
+                  {formatTime(otpSecondsLeft)}
+                </span>
+              </p>
+            ) : (
+              <p className="font-body text-sm text-destructive font-medium">
+                Code expired
+              </p>
+            )}
+          </div>
+
+          {/* Verify button (also auto-triggers when 6 digits entered) */}
+          <Button
+            className="w-full rounded-full"
+            onClick={handleVerifyOtp}
+            disabled={otpValue.length !== 6 || otpVerifying || otpSecondsLeft === 0}
+          >
+            {otpVerifying
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating account...</>
+              : "Verify & Create Account"}
+          </Button>
+
+          {/* Resend */}
+          <div className="text-center font-body text-sm text-muted-foreground">
+            Didn't receive it?{" "}
+            <button
+              onClick={() => dispatchOtp(email)}
+              disabled={otpSending || otpSecondsLeft > 240} // allow resend after 1 min
+              className="font-medium text-primary hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+            >
+              {otpSending
+                ? "Sending..."
+                : otpSecondsLeft > 240
+                ? `Resend in ${formatTime(otpSecondsLeft - 240)}`
+                : "Resend code"}
+            </button>
+          </div>
+
+          {/* Back */}
+          <button
+            onClick={resetOtpState}
+            className="mx-auto flex items-center gap-1 font-body text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Change email or password
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main login / signup view ───────────────────────────────────────────────
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -174,24 +387,20 @@ const UserLogin = () => {
           </p>
         </div>
 
-        {/* Google button */}
+        {/* Google */}
         <Button
           type="button"
           variant="outline"
           className="w-full gap-3 rounded-full font-body"
           onClick={handleGoogleLogin}
-          disabled={isGoogleLoading || isLoading}
+          disabled={isGoogleLoading || isLoading || otpSending}
         >
           {isGoogleLoading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
+            <><Loader2 className="h-4 w-4 animate-spin" />
               {isMobileDevice() ? "Redirecting to Google…" : "Signing in…"}
             </>
           ) : (
-            <>
-              <GoogleIcon />
-              Continue with Google
-            </>
+            <><GoogleIcon /> Continue with Google</>
           )}
         </Button>
 
@@ -203,8 +412,7 @@ const UserLogin = () => {
         </div>
 
         {/* Email / password form */}
-        <form onSubmit={handleSubmit} className="space-y-3">
-          {/* Email */}
+        <form onSubmit={isSignup ? handleSignupSubmit : handleLoginSubmit} className="space-y-3">
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -217,7 +425,6 @@ const UserLogin = () => {
             />
           </div>
 
-          {/* Password */}
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -237,7 +444,6 @@ const UserLogin = () => {
             </button>
           </div>
 
-          {/* Confirm password (signup only) */}
           {isSignup && (
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -255,11 +461,17 @@ const UserLogin = () => {
           <Button
             type="submit"
             className="w-full rounded-full font-body"
-            disabled={isLoading || isGoogleLoading}
+            disabled={isLoading || isGoogleLoading || otpSending}
           >
-            {isLoading
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Please wait...</>
-              : isSignup ? "Create Account" : "Sign In"}
+            {otpSending ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending OTP...</>
+            ) : isLoading ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Please wait...</>
+            ) : isSignup ? (
+              "Send Verification Code"
+            ) : (
+              "Sign In"
+            )}
           </Button>
         </form>
 
@@ -273,11 +485,15 @@ const UserLogin = () => {
           </button>
         )}
 
-        {/* Toggle sign in / sign up */}
+        {/* Toggle */}
         <div className="text-center font-body text-sm text-muted-foreground">
           {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
           <button
-            onClick={() => { setIsSignup(!isSignup); setConfirmPassword(""); }}
+            onClick={() => {
+              setIsSignup(!isSignup);
+              setConfirmPassword("");
+              setPassword("");
+            }}
             className="font-medium text-primary hover:underline"
           >
             {isSignup ? "Sign In" : "Sign Up"}
@@ -290,7 +506,6 @@ const UserLogin = () => {
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Back to store
         </Link>
-
       </div>
     </div>
   );
