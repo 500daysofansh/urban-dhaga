@@ -1,22 +1,5 @@
-/**
- * Vercel Serverless Function — api/send-otp.js
- *
- * POST /api/send-otp
- * Body: { "to": "user@example.com", "otp": "123456" }
- *
- * Environment variables to set in Vercel dashboard
- * (Settings → Environment Variables):
- *   GMAIL_USER  →  your secondary Gmail address  e.g. urbandhage.noreply@gmail.com
- *   GMAIL_PASS  →  16-char App Password (no spaces) from myaccount.google.com/apppasswords
- *
- * How to generate a Gmail App Password:
- *   1. Go to myaccount.google.com → Security
- *   2. Enable 2-Step Verification if not already on
- *   3. Search "App passwords" → create one named "Urban Dhage OTP"
- *   4. Copy the 16-char password → paste as GMAIL_PASS in Vercel
- */
-
-const nodemailer = require("nodemailer");
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import nodemailer from "nodemailer";
 
 const ALLOWED_ORIGINS = [
   "https://www.urbandhage.in",
@@ -25,7 +8,7 @@ const ALLOWED_ORIGINS = [
   "http://localhost:8080",
 ];
 
-module.exports = async function handler(req, res) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   const origin = req.headers.origin || "";
   const allowedOrigin = ALLOWED_ORIGINS.includes(origin)
     ? origin
@@ -49,19 +32,24 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: "Missing 'to' or 'otp'" });
   }
 
-  // Basic sanity checks — don't send to garbage addresses
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
     return res.status(400).json({ error: "Invalid email address" });
   }
-  if (!/^\d{6}$/.test(otp)) {
+
+  if (!/^\d{6}$/.test(String(otp))) {
     return res.status(400).json({ error: "Invalid OTP format" });
+  }
+
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) {
+    console.error("Missing GMAIL_USER or GMAIL_PASS environment variables");
+    return res.status(500).json({ error: "Server misconfiguration" });
   }
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_PASS, // App Password, not your actual Gmail password
+      pass: process.env.GMAIL_PASS,
     },
   });
 
@@ -86,13 +74,13 @@ module.exports = async function handler(req, res) {
       from: `"Urban Dhage" <${process.env.GMAIL_USER}>`,
       to,
       subject: `${otp} is your Urban Dhage verification code`,
-      text: `Your Urban Dhage sign-up verification code is: ${otp}\n\nIt expires in 5 minutes.\n\nIf you didn't request this, ignore this email.`,
+      text: `Your Urban Dhage verification code is: ${otp}\n\nIt expires in 5 minutes.\n\nIf you didn't request this, ignore this email.`,
       html,
     });
 
     return res.status(200).json({ success: true });
-  } catch (err) {
-    console.error("OTP email error:", err);
+  } catch (err: any) {
+    console.error("Nodemailer error:", err.message);
     return res.status(500).json({ error: "Failed to send email. Please try again." });
   }
-};
+}
