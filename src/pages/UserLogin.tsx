@@ -50,9 +50,24 @@ const UserLogin = () => {
   const [otpVerifying, setOtpVerifying] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { login, signup, loginWithGoogle, resetPassword } = useAuth();
+  const { user, loading, login, signup, loginWithGoogle, resetPassword } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // ── Post-redirect navigation ───────────────────────────────────────────────
+  // On mobile, Google sign-in uses a redirect flow: the page navigates away to
+  // Google, the user picks their account, and Google redirects back to the app.
+  // When the app reloads, AuthContext processes the redirect result and fires
+  // onAuthStateChanged with the authenticated user. We watch for that here and
+  // navigate home as soon as it happens.
+  //
+  // This also doubles as the guard that prevents logged-in users from seeing
+  // the login page at all (e.g. if they navigate back to /login while signed in).
+  useEffect(() => {
+    if (!loading && user) {
+      navigate("/", { replace: true });
+    }
+  }, [user, loading, navigate]);
 
   // Countdown timer while OTP screen is visible
   useEffect(() => {
@@ -196,9 +211,16 @@ const UserLogin = () => {
     setIsGoogleLoading(true);
     try {
       await loginWithGoogle();
-      if (isMobileDevice()) return; // redirect flow — page navigates away
-      toast({ title: "Welcome! 👋", description: "Signed in with Google." });
-      navigate("/");
+      // On mobile this line is never reached because the page navigates away
+      // to Google. Navigation home happens in the useEffect above once the
+      // redirect returns and onAuthStateChanged fires with the real user.
+      //
+      // On desktop (popup flow) loginWithGoogle() resolves here with the user
+      // already set in Firebase, so we show the toast and navigate normally.
+      if (!isMobileDevice()) {
+        toast({ title: "Welcome! 👋", description: "Signed in with Google." });
+        navigate("/");
+      }
     } catch (error: any) {
       const code = error?.code || "";
       if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
