@@ -17,9 +17,6 @@ const GoogleIcon = () => (
   </svg>
 );
 
-const isMobileDevice = () =>
-  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
 const INPUT_CLS = "text-base sm:text-sm touch-manipulation";
 
 const OTP_EXPIRY_SECONDS = 300; // 5 minutes
@@ -41,33 +38,18 @@ const UserLogin = () => {
   const [showReset, setShowReset] = useState(false);
 
   // OTP state
-  const [otpStep, setOtpStep] = useState(false);          // show OTP screen?
-  const [otpValue, setOtpValue] = useState("");            // what user typed
-  const [otpSecret, setOtpSecret] = useState("");          // what we generated
-  const [otpExpiry, setOtpExpiry] = useState<number>(0);  // timestamp ms
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpValue, setOtpValue] = useState("");
+  const [otpSecret, setOtpSecret] = useState("");
+  const [otpExpiry, setOtpExpiry] = useState<number>(0);
   const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
   const [otpSending, setOtpSending] = useState(false);
   const [otpVerifying, setOtpVerifying] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { user, loading, login, signup, loginWithGoogle, resetPassword } = useAuth();
+  const { login, signup, loginWithGoogle, resetPassword } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  // ── Post-redirect navigation ───────────────────────────────────────────────
-  // On mobile, Google sign-in uses a redirect flow: the page navigates away to
-  // Google, the user picks their account, and Google redirects back to the app.
-  // When the app reloads, AuthContext processes the redirect result and fires
-  // onAuthStateChanged with the authenticated user. We watch for that here and
-  // navigate home as soon as it happens.
-  //
-  // This also doubles as the guard that prevents logged-in users from seeing
-  // the login page at all (e.g. if they navigate back to /login while signed in).
-  useEffect(() => {
-    if (!loading && user) {
-      navigate("/", { replace: true });
-    }
-  }, [user, loading, navigate]);
 
   // Countdown timer while OTP screen is visible
   useEffect(() => {
@@ -153,7 +135,6 @@ const UserLogin = () => {
       return;
     }
 
-    // OTP matched → create the Firebase account
     setOtpVerifying(true);
     try {
       await signup(email, password);
@@ -206,23 +187,18 @@ const UserLogin = () => {
   };
 
   // ── Google login ───────────────────────────────────────────────────────────
+  // signInWithPopup resolves with the user directly on both desktop and mobile.
+  // No redirect flow, no race conditions, no postMessage issues.
 
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
     try {
       await loginWithGoogle();
-      // On mobile this line is never reached because the page navigates away
-      // to Google. Navigation home happens in the useEffect above once the
-      // redirect returns and onAuthStateChanged fires with the real user.
-      //
-      // On desktop (popup flow) loginWithGoogle() resolves here with the user
-      // already set in Firebase, so we show the toast and navigate normally.
-      if (!isMobileDevice()) {
-        toast({ title: "Welcome! 👋", description: "Signed in with Google." });
-        navigate("/");
-      }
+      toast({ title: "Welcome! 👋", description: "Signed in with Google." });
+      navigate("/");
     } catch (error: any) {
       const code = error?.code || "";
+      // User closed the popup — not an error worth toasting
       if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
         toast({
           title: "Google sign-in failed",
@@ -230,6 +206,7 @@ const UserLogin = () => {
           variant: "destructive",
         });
       }
+    } finally {
       setIsGoogleLoading(false);
     }
   };
@@ -309,7 +286,6 @@ const UserLogin = () => {
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="w-full max-w-sm space-y-6">
 
-          {/* Header */}
           <div className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <ShieldCheck className="h-7 w-7 text-primary" />
@@ -321,7 +297,6 @@ const UserLogin = () => {
             <p className="font-body text-sm font-semibold text-foreground">{email}</p>
           </div>
 
-          {/* OTP input — uses the input-otp component already in package.json */}
           <div className="flex flex-col items-center gap-4">
             <InputOTP
               maxLength={6}
@@ -339,7 +314,6 @@ const UserLogin = () => {
               </InputOTPGroup>
             </InputOTP>
 
-            {/* Timer */}
             {otpSecondsLeft > 0 ? (
               <p className="font-body text-sm text-muted-foreground">
                 Code expires in{" "}
@@ -354,7 +328,6 @@ const UserLogin = () => {
             )}
           </div>
 
-          {/* Verify button (also auto-triggers when 6 digits entered) */}
           <Button
             className="w-full rounded-full"
             onClick={handleVerifyOtp}
@@ -365,12 +338,11 @@ const UserLogin = () => {
               : "Verify & Create Account"}
           </Button>
 
-          {/* Resend */}
           <div className="text-center font-body text-sm text-muted-foreground">
             Didn't receive it?{" "}
             <button
               onClick={() => dispatchOtp(email)}
-              disabled={otpSending || otpSecondsLeft > 240} // allow resend after 1 min
+              disabled={otpSending || otpSecondsLeft > 240}
               className="font-medium text-primary hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
             >
               {otpSending
@@ -381,7 +353,6 @@ const UserLogin = () => {
             </button>
           </div>
 
-          {/* Back */}
           <button
             onClick={resetOtpState}
             className="mx-auto flex items-center gap-1 font-body text-sm text-muted-foreground hover:text-foreground"
@@ -399,7 +370,6 @@ const UserLogin = () => {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
 
-        {/* Header */}
         <div className="text-center">
           <h1 className="font-heading text-2xl font-bold text-foreground">
             Urban <span className="text-primary">Dhage</span>
@@ -409,7 +379,6 @@ const UserLogin = () => {
           </p>
         </div>
 
-        {/* Google */}
         <Button
           type="button"
           variant="outline"
@@ -418,22 +387,18 @@ const UserLogin = () => {
           disabled={isGoogleLoading || isLoading || otpSending}
         >
           {isGoogleLoading ? (
-            <><Loader2 className="h-4 w-4 animate-spin" />
-              {isMobileDevice() ? "Redirecting to Google…" : "Signing in…"}
-            </>
+            <><Loader2 className="h-4 w-4 animate-spin" /> Signing in…</>
           ) : (
             <><GoogleIcon /> Continue with Google</>
           )}
         </Button>
 
-        {/* Divider */}
         <div className="flex items-center gap-3">
           <div className="h-px flex-1 bg-border" />
           <span className="font-body text-xs text-muted-foreground">or</span>
           <div className="h-px flex-1 bg-border" />
         </div>
 
-        {/* Email / password form */}
         <form onSubmit={isSignup ? handleSignupSubmit : handleLoginSubmit} className="space-y-3">
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -497,7 +462,6 @@ const UserLogin = () => {
           </Button>
         </form>
 
-        {/* Forgot password */}
         {!isSignup && (
           <button
             onClick={() => setShowReset(true)}
@@ -507,7 +471,6 @@ const UserLogin = () => {
           </button>
         )}
 
-        {/* Toggle */}
         <div className="text-center font-body text-sm text-muted-foreground">
           {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
           <button
