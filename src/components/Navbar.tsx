@@ -95,9 +95,21 @@ const Navbar = () => {
         }`}
       >
         <div className="mx-auto flex h-16 w-full items-center justify-between px-4 md:px-8 lg:px-12">
-          {/* Logo */}
+          {/* Logo — picture gives WebP to modern browsers, PNG as fallback.
+              width/height prevent layout shift. fetchpriority=high since it's
+              the first visible image and above the fold. */}
           <Link to="/" className="flex items-center">
-            <img src="/logo.png" alt="Urban Dhage" className="h-10 w-auto object-contain" />
+            <picture>
+              <source srcSet="/logo.webp" type="image/webp" />
+              <img
+                src="/logo.png"
+                alt="Urban Dhage"
+                className="h-10 w-auto object-contain"
+                width="511"
+                height="68"
+                fetchPriority="high"
+              />
+            </picture>
           </Link>
 
           {/* Desktop nav */}
