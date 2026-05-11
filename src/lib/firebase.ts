@@ -1,37 +1,11 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import type { Auth } from "firebase/auth";
+import type { Firestore } from "firebase/firestore";
+import type { FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-
-  // ─── CRITICAL FIX ────────────────────────────────────────────────────────────
-  // authDomain MUST match the domain your app is actually served from.
-  //
-  // When set to the default "<project>.firebaseapp.com", Firebase's redirect
-  // flow works like this on mobile:
-  //   1. App redirects user to Google sign-in.
-  //   2. Google redirects back to <project>.firebaseapp.com/__/auth/handler
-  //   3. That page tries to postMessage the credential back to your app's
-  //      window — but your app is at www.urbandhage.in, a DIFFERENT origin.
-  //   4. The browser blocks the cross-origin postMessage.
-  //   5. getRedirectResult() gets nothing → returns null → no account created.
-  //
-  // Setting authDomain to your actual custom domain fixes this because the
-  // entire redirect loop stays on the same origin.
-  //
-  // You also need to add www.urbandhage.in to:
-  //   Firebase Console → Authentication → Settings → Authorized domains
-  // (Add it if it's not already there.)
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  // ^ Keep using the env var — just change its VALUE in your .env / Vercel
-  //   environment variables from:
-  //     VITE_FIREBASE_AUTH_DOMAIN=<project-id>.firebaseapp.com
-  //   to:
-  //     VITE_FIREBASE_AUTH_DOMAIN=www.urbandhage.in
-  // ─────────────────────────────────────────────────────────────────────────────
-
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
@@ -39,6 +13,33 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+
+// Lazy singletons — Firebase services are only initialized when first used,
+// not at module load time. This removes auth/iframe.js from the critical path.
+let _auth: Auth | null = null;
+let _db: Firestore | null = null;
+let _storage: FirebaseStorage | null = null;
+
+export const getAuthInstance = async (): Promise<Auth> => {
+  if (!_auth) {
+    const { getAuth } = await import("firebase/auth");
+    _auth = getAuth(app);
+  }
+  return _auth;
+};
+
+export const getDbInstance = async (): Promise<Firestore> => {
+  if (!_db) {
+    const { getFirestore } = await import("firebase/firestore");
+    _db = getFirestore(app);
+  }
+  return _db;
+};
+
+export const getStorageInstance = async (): Promise<FirebaseStorage> => {
+  if (!_storage) {
+    const { getStorage } = await import("firebase/storage");
+    _storage = getStorage(app);
+  }
+  return _storage;
+};
