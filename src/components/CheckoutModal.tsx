@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 // ─────────────────────────────────────────────
 const DELIVERY_CHARGE = 60;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RAZORPAY_SCRIPT = "https://checkout.razorpay.com/v1/checkout.js";
 
 const INDIAN_STATES = [
   "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
@@ -62,6 +63,26 @@ function validateAddress(addr: ShippingAddress): string | null {
   if (!addr.state)                       return "Please select a state";
   if (!/^\d{6}$/.test(addr.pincode))     return "Enter a valid 6-digit pincode";
   return null;
+}
+
+// Loads Razorpay script on demand, resolves when ready.
+// Safe to call multiple times — reuses existing script tag.
+function loadRazorpayScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.Razorpay) { resolve(); return; }
+    const existing = document.querySelector(`script[src="${RAZORPAY_SCRIPT}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", reject);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = RAZORPAY_SCRIPT;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = reject;
+    document.body.appendChild(script);
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -119,6 +140,13 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
       setPaying(false);
     }
   }, [open]);
+
+  // ── Preload Razorpay when modal opens & online payment is selected ──────
+  useEffect(() => {
+    if (open && paymentMethod === "online") {
+      loadRazorpayScript().catch(() => {});
+    }
+  }, [open, paymentMethod]);
 
   // ── Load saved addresses ────────────────────────────────────────────────
   useEffect(() => {
@@ -308,7 +336,14 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
       return;
     }
 
-    // Razorpay
+    // Razorpay — ensure script is loaded before opening
+    try {
+      await loadRazorpayScript();
+    } catch {
+      toast({ title: "Failed to load payment gateway. Please try again.", variant: "destructive" });
+      return;
+    }
+
     const rzp = new (window as any).Razorpay({
       key:         "rzp_live_Siq5Fd24TZ9Zxl",
       amount:      finalAmount * 100,
@@ -335,7 +370,7 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
   };
 
   // ─────────────────────────────────────────────
-  // Render
+  // Render — unchanged
   // ─────────────────────────────────────────────
   return (
     <div
@@ -366,7 +401,6 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 sm:px-6">
 
-          {/* Email — phone-auth users only */}
           {needsEmail && !loadingSaved && (
             <section className="space-y-2">
               <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Contact</p>
@@ -391,7 +425,6 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             </section>
           )}
 
-          {/* Delivery address */}
           <section className="space-y-2">
             <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               Delivery Address
@@ -495,7 +528,6 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             )}
           </section>
 
-          {/* Payment method */}
           <section className="space-y-2">
             <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Payment Method</p>
             <div className="grid grid-cols-2 gap-3">
@@ -520,7 +552,6 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             </div>
           </section>
 
-          {/* Promo code */}
           <section className="space-y-2">
             <p className="font-body text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Promo Code</p>
 
@@ -563,7 +594,6 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
             )}
           </section>
 
-          {/* Order summary */}
           <section className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
             <p className="font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order Summary</p>
 
