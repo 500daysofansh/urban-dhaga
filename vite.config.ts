@@ -30,32 +30,26 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // React must NOT be manually chunked — let Vite handle it
-          // to avoid createContext undefined errors
+          // Firebase and React must not be manually split —
+          // they have internal circular refs that break in isolation
 
-          // Firebase
-          if (id.includes("firebase/auth")) return "firebase-auth";
-          if (id.includes("firebase/firestore")) return "firebase-firestore";
-          if (id.includes("firebase/storage")) return "firebase-storage";
-          if (id.includes("firebase")) return "firebase-core";
-
-          // Animation
+          // Animation — safe to split, no circular deps
           if (id.includes("framer-motion")) return "framer-motion";
 
-          // UI primitives
+          // UI primitives — safe to split
           if (
             id.includes("@radix-ui") ||
             id.includes("cmdk") ||
             id.includes("vaul")
           ) return "ui";
 
-          // Routing
+          // Routing — safe to split
           if (
             id.includes("react-router") ||
             id.includes("@remix-run")
           ) return "router";
 
-          // Everything else in node_modules
+          // Everything else including Firebase and React goes to vendor
           if (id.includes("node_modules")) return "vendor";
         },
       },
