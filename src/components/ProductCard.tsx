@@ -6,7 +6,7 @@ import { useWishlist } from "@/contexts/WishlistContext";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, Heart } from "lucide-react";
 import { motion } from "framer-motion";
-import { cardImage } from "@/lib/cloudinary";
+import { cardImage, cardSrcSet } from "@/lib/cloudinary";
 
 interface ProductCardProps {
   product: Product;
@@ -69,18 +69,15 @@ function pickBadge(badges: BadgeVariant[], seed: string): BadgeVariant {
 
 function dealBadge(product: Product): BadgeVariant | null {
   if (!product.costPrice || product.costPrice <= 0) return null;
-
   const discount = Math.round(
     ((product.costPrice - product.price) / product.costPrice) * 100
   );
-
   if (discount >= 30) {
     return [
       `${discount}% off`,
       "bg-emerald-50 text-emerald-600 border-emerald-200",
     ];
   }
-
   return null;
 }
 
@@ -112,8 +109,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     (c) => c.toLowerCase() === product.category.toLowerCase()
   );
 
-  const hasSizes =
-    !isJewelry && product.sizes && product.sizes.length > 0;
+  const hasSizes = !isJewelry && product.sizes && product.sizes.length > 0;
 
   const outOfStock = !product.inStock || product.quantity <= 0;
 
@@ -123,15 +119,8 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const [badgeLabel, badgeClass] = useMemo<BadgeVariant>(() => {
     if (outOfStock) return OUT_OF_STOCK_BADGE;
-
-    if (isLimited) {
-      return pickBadge(LIMITED_BADGES, product.id);
-    }
-
-    return (
-      dealBadge(product) ??
-      pickBadge(DEFAULT_BADGES, product.id)
-    );
+    if (isLimited) return pickBadge(LIMITED_BADGES, product.id);
+    return dealBadge(product) ?? pickBadge(DEFAULT_BADGES, product.id);
   }, [outOfStock, isLimited, product]);
 
   const { rating, reviewCount } = useMemo(
@@ -142,6 +131,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     [product.id]
   );
 
+  // optimizedImages used only for src fallback on desktop hover preload
   const optimizedImages = useMemo(
     () => allImages.map((src) => cardImage(src)),
     [allImages]
@@ -151,12 +141,10 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
     if (!isMobile.current || !hasMultiple) return;
 
     const card = cardRef.current;
-
     if (!card) return;
 
     const startSlide = () => {
       if (intervalRef.current) return;
-
       intervalRef.current = setInterval(() => {
         setActiveIdx((prev) => (prev + 1) % allImages.length);
       }, SLIDE_INTERVAL);
@@ -178,9 +166,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
           setActiveIdx(0);
         }
       },
-      {
-        threshold: 0.6,
-      }
+      { threshold: 0.6 }
     );
 
     observer.observe(card);
@@ -193,15 +179,21 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
   const handleMouseEnter = () => {
     if (isMobile.current) return;
-
     setIsHovered(true);
-
     if (hasMultiple) {
       const img = new Image();
       img.src = optimizedImages[1];
     }
   };
 
+  // Raw source image for the current display state (used for srcSet generation)
+  const rawDisplayImage = isMobile.current
+    ? allImages[activeIdx] ?? allImages[0]
+    : isHovered && hasMultiple
+    ? allImages[1]
+    : allImages[0];
+
+  // Optimized src fallback (for browsers without srcSet support)
   const displayImage = isMobile.current
     ? optimizedImages[activeIdx] ?? optimizedImages[0]
     : isHovered && hasMultiple
@@ -213,63 +205,39 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
       childInteractedRef.current = false;
       return;
     }
-
     navigate(`/product/${product.id}`);
   };
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
-
     childInteractedRef.current = true;
-
     if (outOfStock) return;
-
     if (hasSizes && !selectedSize) {
-      toast({
-        title: "Please select a size",
-        variant: "destructive",
-      });
-
+      toast({ title: "Please select a size", variant: "destructive" });
       return;
     }
-
     addToCart(product, selectedSize);
-
     toast({
       title: "Added to cart",
-      description: `${product.name}${
-        selectedSize ? ` (${selectedSize})` : ""
-      }`,
+      description: `${product.name}${selectedSize ? ` (${selectedSize})` : ""}`,
     });
   };
 
   const handleWishlist = (e: React.MouseEvent) => {
     e.stopPropagation();
-
     childInteractedRef.current = true;
-
     toggleWishlist(product);
-
     toast({
-      title: wishlisted
-        ? "Removed from wishlist"
-        : "Added to wishlist",
+      title: wishlisted ? "Removed from wishlist" : "Added to wishlist",
       description: product.name,
     });
   };
 
-  const handleSizeClick = (
-    e: React.MouseEvent,
-    size: string
-  ) => {
+  const handleSizeClick = (e: React.MouseEvent, size: string) => {
     e.stopPropagation();
     e.preventDefault();
-
     childInteractedRef.current = true;
-
-    setSelectedSize((prev) =>
-      prev === size ? undefined : size
-    );
+    setSelectedSize((prev) => (prev === size ? undefined : size));
   };
 
   const cardContent = (
@@ -283,6 +251,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
       <div className="relative aspect-[4/5] overflow-hidden bg-muted">
         <img
           src={displayImage}
+          srcSet={cardSrcSet(rawDisplayImage)}
           alt={product.name}
           width={400}
           height={500}
@@ -290,9 +259,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
           decoding="async"
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           className={`h-full w-full object-cover transition-transform duration-300 ${
-            isHovered && !isMobile.current
-              ? "scale-105"
-              : "scale-100"
+            isHovered && !isMobile.current ? "scale-105" : "scale-100"
           } ${outOfStock ? "opacity-70" : ""}`}
         />
 
@@ -305,17 +272,11 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
         <button
           onClick={handleWishlist}
           className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur-sm transition-colors hover:bg-background"
-          aria-label={
-            wishlisted
-              ? "Remove from wishlist"
-              : "Add to wishlist"
-          }
+          aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
         >
           <Heart
             className={`h-3.5 w-3.5 transition-colors ${
-              wishlisted
-                ? "fill-accent text-accent"
-                : "text-muted-foreground"
+              wishlisted ? "fill-accent text-accent" : "text-muted-foreground"
             }`}
           />
         </button>
@@ -333,12 +294,8 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
                 key={idx}
                 className={`rounded-full transition-all duration-300 ${
                   activeIdx === idx ||
-                  (!isMobile.current &&
-                    isHovered &&
-                    idx === 1) ||
-                  (!isMobile.current &&
-                    !isHovered &&
-                    idx === 0)
+                  (!isMobile.current && isHovered && idx === 1) ||
+                  (!isMobile.current && !isHovered && idx === 0)
                     ? "h-1.5 w-4 bg-white"
                     : "h-1.5 w-1.5 bg-white/50"
                 }`}
@@ -358,10 +315,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
         </h3>
 
         <div className="mb-3">
-          <StarRating
-            rating={rating}
-            count={reviewCount}
-          />
+          <StarRating rating={rating} count={reviewCount} />
         </div>
 
         {hasSizes && (
@@ -369,9 +323,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
             {product.sizes!.map((size) => (
               <button
                 key={size}
-                onClick={(e) =>
-                  handleSizeClick(e, size)
-                }
+                onClick={(e) => handleSizeClick(e, size)}
                 onTouchStart={(e) => {
                   e.stopPropagation();
                   childInteractedRef.current = true;
@@ -391,9 +343,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
         <div className="flex items-center justify-between gap-2">
           <span
             className={`font-heading text-base font-semibold sm:text-lg ${
-              outOfStock
-                ? "text-muted-foreground"
-                : "text-foreground"
+              outOfStock ? "text-muted-foreground" : "text-foreground"
             }`}
           >
             ₹{product.price.toLocaleString("en-IN")}
