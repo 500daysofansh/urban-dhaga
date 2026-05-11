@@ -26,30 +26,21 @@ export default defineConfig(({ mode }) => ({
     ],
   },
   build: {
+    target: ["es2020", "edge88", "firefox78", "chrome87", "safari14"], // ← ADD THIS
     chunkSizeWarningLimit: 400,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Firebase and React must not be manually split —
-          // they have internal circular refs that break in isolation
-
-          // Animation — safe to split, no circular deps
           if (id.includes("framer-motion")) return "framer-motion";
-
-          // UI primitives — safe to split
           if (
             id.includes("@radix-ui") ||
             id.includes("cmdk") ||
             id.includes("vaul")
           ) return "ui";
-
-          // Routing — safe to split
           if (
             id.includes("react-router") ||
             id.includes("@remix-run")
           ) return "router";
-
-          // Everything else including Firebase and React goes to vendor
           if (id.includes("node_modules")) return "vendor";
         },
       },
