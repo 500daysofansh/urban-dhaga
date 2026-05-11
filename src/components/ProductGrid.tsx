@@ -50,9 +50,16 @@ const buildCategories = (items: Product[]) => {
   ];
 };
 
+// FIX #2: Guard against non-array / null sizes to prevent crash
 const buildSizes = (items: Product[]) => {
   const ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
-  const unique = [...new Set(items.flatMap((p) => p.sizes ?? []))];
+  const unique = [
+    ...new Set(
+      items.flatMap((p) =>
+        Array.isArray(p.sizes) ? p.sizes.filter(Boolean) : []
+      )
+    ),
+  ];
   return [...ORDER.filter((s) => unique.includes(s)), ...unique.filter((s) => !ORDER.includes(s))];
 };
 
@@ -61,8 +68,8 @@ const sortProducts = (items: Product[], sort: SortValue): Product[] => {
   switch (sort) {
     case "price-asc": return copy.sort((a, b) => a.price - b.price);
     case "price-desc": return copy.sort((a, b) => b.price - a.price);
-    case "name-asc": return copy.sort((a, b) => a.name.localeCompare(b.name));
-    case "name-desc": return copy.sort((a, b) => b.name.localeCompare(a.name));
+    case "name-asc": return copy.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+    case "name-desc": return copy.sort((a, b) => (b.name ?? "").localeCompare(a.name ?? ""));
     default: return copy;
   }
 };
@@ -73,10 +80,11 @@ const SkeletonCard = () => (
   <div className="overflow-hidden rounded-xl border border-border bg-card">
     <div className="aspect-[4/5] animate-pulse bg-muted" />
     <div className="space-y-3 p-3 sm:p-4">
+      {/* FIX #14: w-56 max-w-full prevents skeleton width jump */}
       <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
       <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
       <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
-      <div className="h-5 w-1/3 animate-pulse rounded bg-muted" />
+      <div className="h-5 w-56 max-w-full animate-pulse rounded bg-muted" />
     </div>
   </div>
 );
@@ -92,6 +100,7 @@ interface DropdownProps {
 }
 
 const FilterDropdown = ({ label, open, onToggle, children, active, alignRight }: DropdownProps) => (
+  // FIX #4: data-filter-dropdown added so outside-click handler covers menu items too
   <div className="relative" data-filter-dropdown="">
     <button
       onClick={onToggle}
@@ -125,21 +134,20 @@ const FilterDropdown = ({ label, open, onToggle, children, active, alignRight }:
 );
 
 // ── Mobile filter sheet ───────────────────────────────────────────────────────
-// On small screens, a bottom sheet replaces the inline filter bar so all
-// controls are reachable without horizontal scrolling.
 
+// FIX #1: Use React.Dispatch types for setter props to support updater callbacks
 interface FilterSheetProps {
   open: boolean;
   onClose: () => void;
   priceRange: PriceRangeLabel;
-  setPriceRange: (v: PriceRangeLabel) => void;
+  setPriceRange: React.Dispatch<React.SetStateAction<PriceRangeLabel>>;
   allSizes: string[];
   selectedSizes: string[];
-  setSelectedSizes: (v: string[]) => void;
+  setSelectedSizes: React.Dispatch<React.SetStateAction<string[]>>;
   showInStock: boolean;
-  setShowInStock: (v: boolean) => void;
+  setShowInStock: React.Dispatch<React.SetStateAction<boolean>>;
   sortBy: SortValue;
-  setSortBy: (v: SortValue) => void;
+  setSortBy: React.Dispatch<React.SetStateAction<SortValue>>;
   activeFilterCount: number;
   onClear: () => void;
 }
@@ -153,21 +161,21 @@ const FilterSheet = ({
   <AnimatePresence>
     {open && (
       <>
-        {/* Backdrop */}
+        {/* FIX #6: backdrop-blur-sm for better mobile UI */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-40 bg-black/40"
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
           onClick={onClose}
         />
-        {/* Sheet */}
+        {/* FIX #5: max-h-[85vh] so bottom buttons aren't hidden on Android */}
         <motion.div
           initial={{ y: "100%" }}
           animate={{ y: 0 }}
           exit={{ y: "100%" }}
           transition={{ type: "spring", damping: 30, stiffness: 300 }}
-          className="fixed bottom-0 left-0 right-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-2xl bg-background pb-safe shadow-2xl"
+          className="fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl bg-background pb-safe shadow-2xl"
         >
           {/* Handle */}
           <div className="flex justify-center pt-3 pb-1">
@@ -231,10 +239,10 @@ const FilterSheet = ({
                     <button
                       key={s}
                       onClick={() =>
-                        setSelectedSizes(
-                          selectedSizes.includes(s)
-                            ? selectedSizes.filter((x) => x !== s)
-                            : [...selectedSizes, s]
+                        setSelectedSizes((prev) =>
+                          prev.includes(s)
+                            ? prev.filter((x) => x !== s)
+                            : [...prev, s]
                         )
                       }
                       className={`rounded border px-3 py-1.5 font-body text-sm font-medium transition-colors ${
@@ -254,7 +262,7 @@ const FilterSheet = ({
             <div className="mb-6">
               <p className="mb-2 font-body text-xs font-semibold uppercase tracking-widest text-muted-foreground">Availability</p>
               <button
-                onClick={() => setShowInStock(!showInStock)}
+                onClick={() => setShowInStock((v) => !v)}
                 className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 font-body text-sm transition-colors ${
                   showInStock
                     ? "border-foreground bg-foreground text-background"
@@ -326,10 +334,14 @@ const ProductGrid = () => {
 
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
 
-  // close dropdowns on outside click
+  // FIX #4: Close dropdown on outside click — checks BOTH data-filter-root and data-filter-dropdown
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest("[data-filter-root]")) {
+      if (
+        !(e.target as HTMLElement).closest(
+          "[data-filter-root], [data-filter-dropdown]"
+        )
+      ) {
         setOpenDropdown(null);
       }
     };
@@ -352,12 +364,17 @@ const ProductGrid = () => {
       const more = snap.docs.length >= PAGE_SIZE;
       hasMoreRef.current = more;
       setHasMore(more);
+
+      // FIX #3: Deduplicate by id using findIndex for correctness under rapid scroll
       setProducts((prev) => {
-        const ids = new Set(prev.map((p) => p.id));
-        const merged = [...prev, ...newItems.filter((p) => !ids.has(p.id))];
-        setCategories(buildCategories(merged));
-        setAllSizes(buildSizes(merged));
-        return merged;
+        const merged = [...prev, ...newItems];
+        const unique = merged.filter(
+          (product, index, self) =>
+            index === self.findIndex((p) => p.id === product.id)
+        );
+        setCategories(buildCategories(unique));
+        setAllSizes(buildSizes(unique));
+        return unique;
       });
     } catch (err) { console.error("fetchMore failed:", err); }
     finally { isFetching.current = false; setLoadingMore(false); }
@@ -402,19 +419,27 @@ const ProductGrid = () => {
     if (!searchQuery || !hasMore || isFetching.current) return;
     const q = searchQuery.toLowerCase();
     const count = products.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
+      // FIX #12: Guard against missing name/category with ?? ""
+      (p) =>
+        (p.name ?? "").toLowerCase().includes(q) ||
+        (p.category ?? "").toLowerCase().includes(q)
     ).length;
     if (count < PAGE_SIZE) fetchMoreRef.current?.();
   }, [searchQuery, products, hasMore]);
 
-  // sentinel observer
+  // FIX #9: Only fire fetch if not already loading to prevent spam
+  // FIX #8: rootMargin reduced from 800px to 300px for stable triggering
   const attachObserver = useCallback((node: HTMLDivElement | null) => {
     observerRef.current?.disconnect();
     observerRef.current = null;
     if (!node) return;
     observerRef.current = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) fetchMoreRef.current?.(); },
-      { rootMargin: "0px 0px 800px 0px", threshold: 0 }
+      ([entry]) => {
+        if (entry.isIntersecting && !isFetching.current) {
+          fetchMoreRef.current?.();
+        }
+      },
+      { rootMargin: "300px", threshold: 0 }
     );
     observerRef.current.observe(node);
   }, []);
@@ -423,7 +448,7 @@ const ProductGrid = () => {
   useEffect(() => {
     const onScroll = () => {
       if (!hasMoreRef.current || isFetching.current) return;
-      if (document.documentElement.scrollHeight - window.scrollY - window.innerHeight < 800) {
+      if (document.documentElement.scrollHeight - window.scrollY - window.innerHeight < 300) {
         fetchMoreRef.current?.();
       }
     };
@@ -460,10 +485,11 @@ const ProductGrid = () => {
     const { min, max } = PRICE_RANGES.find((r) => r.label === priceRange)!;
     const q = searchQuery.toLowerCase();
     const result = products.filter((p) => {
+      // FIX #12: Guard all string fields against undefined/null
       const matchSearch =
         !q ||
-        p.name.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q) ||
+        (p.name ?? "").toLowerCase().includes(q) ||
+        (p.category ?? "").toLowerCase().includes(q) ||
         (p.description ?? "").toLowerCase().includes(q);
       const matchCategory = !activeCategory || p.category === activeCategory;
       const matchPrice = p.price >= min && p.price <= max;
@@ -502,7 +528,8 @@ const ProductGrid = () => {
 
   if (loading) {
     return (
-      <section id="products" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-16 lg:px-8">
+      // FIX #10: overflow-x-hidden on section prevents horizontal blowout
+      <section id="products" className="mx-auto max-w-7xl overflow-x-hidden px-4 py-10 sm:px-6 sm:py-16 lg:px-8">
         <div className="mb-6 space-y-3">
           <div className="h-4 w-32 animate-pulse rounded bg-muted" />
           <div className="h-8 w-48 animate-pulse rounded bg-muted" />
@@ -513,7 +540,8 @@ const ProductGrid = () => {
             <div key={i} className="h-8 w-20 shrink-0 animate-pulse rounded-full bg-muted" />
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        {/* FIX #13: gap-2.5 on mobile for better card spacing */}
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: PAGE_SIZE }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       </section>
@@ -532,7 +560,8 @@ const ProductGrid = () => {
   // ── main render ───────────────────────────────────────────────────────────
 
   return (
-    <section id="products" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-16 lg:px-8">
+    // FIX #10: overflow-x-hidden prevents any child from causing horizontal scroll
+    <section id="products" className="mx-auto max-w-7xl overflow-x-hidden px-4 py-10 sm:px-6 sm:py-16 lg:px-8">
       {/* Heading */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -558,11 +587,11 @@ const ProductGrid = () => {
         <input
           ref={searchRef}
           type="search"
-          // Shorter placeholder prevents overflow on 360px screens
           placeholder="Search products…"
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); setActiveCategory(null); }}
-          className="w-full rounded-full border border-border bg-background py-2.5 pl-11 pr-10 font-body text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring touch-manipulation"
+          // FIX #7: text-base (≥16px) on all sizes prevents iOS auto-zoom
+          className="w-full rounded-full border border-border bg-background py-2.5 pl-11 pr-10 font-body text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring touch-manipulation"
         />
         {searchQuery && (
           <button
@@ -576,12 +605,11 @@ const ProductGrid = () => {
 
       {/* ── Category pills — horizontal scroll on mobile ── */}
       {categories.length > 0 && (
+        // FIX #11: scrollbar-none added as utility class for cross-browser scrollbar hiding
         <div
           ref={categoryScrollRef}
           className="
-            mb-4 flex gap-2 overflow-x-auto pb-1
-            [-ms-overflow-style:none] [scrollbar-width:none]
-            [&::-webkit-scrollbar]:hidden
+            mb-4 flex gap-2 overflow-x-auto scrollbar-none pb-1
             sm:mb-5 sm:flex-wrap sm:overflow-visible sm:pb-0
           "
         >
@@ -598,7 +626,14 @@ const ProductGrid = () => {
               key={cat}
               variant={activeCategory === cat ? "default" : "outline"}
               size="sm"
-              onClick={() => { setActiveCategory(cat); setSearchQuery(""); }}
+              // FIX #15: Smooth scroll to section on category change
+              onClick={() => {
+                setActiveCategory(cat);
+                setSearchQuery("");
+                document
+                  .getElementById("products")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
               className="shrink-0 rounded-full font-body text-xs sm:text-sm"
             >
               {cat}
@@ -608,8 +643,6 @@ const ProductGrid = () => {
       )}
 
       {/* ── Filter bar ── */}
-      {/* Mobile: single "Filters" button that opens bottom sheet */}
-      {/* Desktop: inline dropdowns */}
       <div className="mb-4 sm:mb-5">
 
         {/* MOBILE FILTER ROW */}
@@ -642,7 +675,7 @@ const ProductGrid = () => {
             {selectedSizes.map((s) => (
               <span key={s} className="shrink-0 flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-body text-xs">
                 {s}
-                <button onClick={() => setSelectedSizes(selectedSizes.filter((x) => x !== s))}><X className="h-3 w-3" /></button>
+                <button onClick={() => setSelectedSizes((prev) => prev.filter((x) => x !== s))}><X className="h-3 w-3" /></button>
               </span>
             ))}
             {showInStock && (
@@ -814,8 +847,8 @@ const ProductGrid = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
-            // Tighter gap on mobile (gap-3), normal on sm+
-            className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4"
+            // FIX #13: gap-2.5 on mobile, gap-4 on sm+
+            className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4"
           >
             {filtered.map((product, index) => (
               <ProductCard key={product.id} product={product} priority={index < 4} />
