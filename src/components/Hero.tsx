@@ -1,19 +1,34 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { useState, useEffect } from "react";
+import { collection, getDocs, query, limit, orderBy } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { Product } from "@/types/product";
 import { useNavigate } from "react-router-dom";
-import { useProducts } from "@/hooks/useProducts"; // adjust import if different
 
 const Hero = () => {
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const navigate = useNavigate();
-  const { products } = useProducts();
+
+  useEffect(() => {
+    const fetchFeatured = async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, "products"), orderBy("name"), limit(4))
+        );
+        const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
+        setFeaturedProducts(items);
+      } catch (err) {
+        console.error("Hero: failed to fetch featured products", err);
+      }
+    };
+    fetchFeatured();
+  }, []);
 
   const scrollToProducts = () => {
     document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
   };
-
-  // Pick first 4 products for the showcase
-  const showcaseProducts = products?.slice(0, 4) ?? [];
 
   return (
     <section className="relative overflow-hidden bg-primary min-h-[85vh] flex items-center">
@@ -63,14 +78,14 @@ const Hero = () => {
           </motion.div>
 
           {/* RIGHT — product grid */}
-          {showcaseProducts.length > 0 && (
+          {featuredProducts.length > 0 && (
             <motion.div
               initial={{ opacity: 0, x: 40 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.4, duration: 0.8, ease: "easeOut" }}
               className="hidden lg:grid grid-cols-2 gap-3"
             >
-              {showcaseProducts.map((product, i) => (
+              {featuredProducts.map((product, i) => (
                 <motion.div
                   key={product.id}
                   initial={{ opacity: 0, y: 20 }}
