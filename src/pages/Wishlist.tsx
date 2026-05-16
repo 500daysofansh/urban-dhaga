@@ -182,7 +182,7 @@ const Wishlist = () => {
                         </h3>
 
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-heading text-base font-semibold text-foreground">
+                          <span className="font-price text-base font-semibold text-foreground">
                             ₹{product.price.toLocaleString("en-IN")}
                           </span>
                           <button

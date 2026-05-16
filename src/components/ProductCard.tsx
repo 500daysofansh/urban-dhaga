@@ -342,7 +342,7 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
 
         <div className="flex items-center justify-between gap-2">
           <span
-            className={`font-heading text-base font-semibold sm:text-lg ${
+            className={`font-price text-base font-semibold sm:text-lg ${
               outOfStock ? "text-muted-foreground" : "text-foreground"
             }`}
           >

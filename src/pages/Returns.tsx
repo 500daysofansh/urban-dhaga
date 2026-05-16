@@ -111,7 +111,7 @@ const Returns = () => {
               <MessageCircle className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-heading text-base font-semibold text-foreground mb-1">Need Help?</h2>
+              <h2 className="font-price text-base font-semibold text-foreground mb-1">Need Help?</h2>
               <p className="font-body text-sm text-muted-foreground">
                 Reach us at{" "}
                 <a href="mailto:support@urbandhage.in" className="text-primary underline underline-offset-2">support@urbandhage.in</a>

@@ -413,7 +413,7 @@ const AdminPanel = () => {
             {showForm && (
               <div className="mb-8 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
                 <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-4 sm:px-6">
-                  <h3 className="font-heading text-base font-semibold text-foreground">
+                  <h3 className="font-price text-base font-semibold text-foreground">
                     {editingId ? "Edit Product" : "New Product"}
                   </h3>
                   <button
@@ -577,7 +577,7 @@ const AdminPanel = () => {
             ) : products.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
                 <PackageOpen className="mb-3 h-10 w-10 text-muted-foreground/40" />
-                <p className="font-heading text-base font-semibold text-foreground">No products yet</p>
+                <p className="font-price text-base font-semibold text-foreground">No products yet</p>
                 <p className="mt-1 font-body text-sm text-muted-foreground">Add your first product to get started</p>
                 <Button className="mt-4" onClick={openNewForm}><Plus className="mr-2 h-4 w-4" /> Add Product</Button>
               </div>
@@ -631,7 +631,7 @@ const AdminPanel = () => {
             <div className="rounded-xl border border-border bg-card p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Tag className="h-4 w-4 text-primary" />
-                <h3 className="font-heading text-base font-semibold text-foreground">Create New Promo</h3>
+                <h3 className="font-price text-base font-semibold text-foreground">Create New Promo</h3>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
@@ -701,7 +701,7 @@ const AdminPanel = () => {
             ) : promos.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
                 <Tag className="mb-3 h-8 w-8 text-muted-foreground/40" />
-                <p className="font-heading text-base font-semibold text-foreground">No promo codes yet</p>
+                <p className="font-price text-base font-semibold text-foreground">No promo codes yet</p>
                 <p className="mt-1 font-body text-sm text-muted-foreground">Create your first promo above</p>
               </div>
             ) : (

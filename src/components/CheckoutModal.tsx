@@ -387,7 +387,7 @@ const CheckoutModal = ({ open, onClose }: CheckoutModalProps) => {
         <div className="flex items-center justify-between border-b border-border px-4 py-4 sm:px-6 shrink-0">
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4 text-primary" />
-            <h2 className="font-heading text-base font-semibold">Checkout</h2>
+            <h2 className="font-price text-base font-semibold">Checkout</h2>
           </div>
           <button
             onClick={onClose}

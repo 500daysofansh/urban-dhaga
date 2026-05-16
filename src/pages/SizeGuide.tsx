@@ -97,7 +97,7 @@ const SizeGuide = () => {
 
           {/* Tips */}
           <div className="rounded-2xl border border-border bg-card p-4 sm:p-6">
-            <h2 className="font-heading text-base font-semibold text-foreground mb-3">Sizing Tips</h2>
+            <h2 className="font-price text-base font-semibold text-foreground mb-3">Sizing Tips</h2>
             <ul className="space-y-2 font-body text-sm text-muted-foreground">
               <li>• If you're between sizes, we recommend sizing up for a comfortable fit.</li>
               <li>• Ethnic wear is often designed with relaxed fits — check the product description for specific fit notes.</li>

@@ -185,7 +185,7 @@ const FilterSheet = ({
           <div className="px-5 pb-6 pt-2">
             {/* Header */}
             <div className="mb-5 flex items-center justify-between">
-              <h3 className="font-heading text-base font-semibold">Filters & Sort</h3>
+              <h3 className="font-price text-base font-semibold">Filters & Sort</h3>
               <button onClick={onClose} className="rounded-full p-1 text-muted-foreground hover:text-foreground">
                 <X className="h-5 w-5" />
               </button>
