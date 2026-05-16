@@ -4,20 +4,26 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 
 const HERO_IMAGES = [
-  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1778002309/pcx8gw7r6x6safuhikux.png",
-  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777982233/tuupf19ftk3qg6am6j7y.png",
-  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777889502/k28tvloeouigagyruora.png",
-  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777814694/xql0ep4eax9kyjnvyzqs.png",
-  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777811207/i9s02rcsxoemwxe97all.png",
-  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777806036/fw3eyhwth7lmqtcxhaiz.png",
-  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777569589/bshjgxzkix0c2b6oiqf0.png",
-  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777569178/nsrs5fbhypzbaxdi1bbr.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto:best/v1778002309/pcx8gw7r6x6safuhikux.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto:best/v1777982233/tuupf19ftk3qg6am6j7y.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto:best/v1777889502/k28tvloeouigagyruora.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto:best/v1777814694/xql0ep4eax9kyjnvyzqs.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto:best/v1777811207/i9s02rcsxoemwxe97all.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto:best/v1777806036/fw3eyhwth7lmqtcxhaiz.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto:best/v1777569589/bshjgxzkix0c2b6oiqf0.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto:best/v1777569178/nsrs5fbhypzbaxdi1bbr.png",
 ];
 
 const Hero = () => {
-  const [bgUrl] = useState(
-    () => HERO_IMAGES[Math.floor(Math.random() * HERO_IMAGES.length)]
-  );
+  const [bgUrl] = useState(() => {
+    const url = HERO_IMAGES[Math.floor(Math.random() * HERO_IMAGES.length)];
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "image";
+    link.href = url;
+    document.head.appendChild(link);
+    return url;
+  });
 
   const scrollToProducts = () => {
     document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
@@ -29,12 +35,14 @@ const Hero = () => {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.6 }}
+        transition={{ duration: 0.5 }}
         className="absolute inset-0"
       >
         <img
           src={bgUrl}
           alt=""
+          fetchPriority="high"
+          decoding="sync"
           className="absolute inset-0 w-full h-full object-cover object-center"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-black/10" />
