@@ -1,5 +1,4 @@
 import type { Config } from "tailwindcss";
-
 export default {
   darkMode: ["class"],
   content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
@@ -16,6 +15,7 @@ export default {
       fontFamily: {
         heading: ['"Playfair Display"', "Georgia", "serif"],
         body: ['"DM Sans"', "system-ui", "sans-serif"],
+        price: ['"Space Grotesk"', "system-ui", "sans-serif"], // 👈 added
       },
       colors: {
         border: "hsl(var(--border))",
