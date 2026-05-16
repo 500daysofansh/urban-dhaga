@@ -6,8 +6,17 @@ import { collection, getDocs, query, limit, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Product } from "@/types/product";
 
+const getOptimizedUrl = (url: string): string => {
+  if (!url.includes("cloudinary.com")) return url;
+  const isMobile = window.innerWidth < 768;
+  return url.replace(
+    "/upload/",
+    isMobile ? "/upload/w_750,q_auto,f_auto/" : "/upload/w_1920,q_auto:best,f_auto/"
+  );
+};
+
 const Hero = () => {
-  const [bgProduct, setBgProduct] = useState<Product | null>(null);
+  const [bgImageSrc, setBgImageSrc] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchFeatured = async () => {
@@ -23,11 +32,11 @@ const Hero = () => {
         );
         if (withImages.length > 0) {
           const random = withImages[Math.floor(Math.random() * withImages.length)];
+          const rawUrl = random.images?.[0] ?? random.image;
+          const optimizedUrl = getOptimizedUrl(rawUrl);
           const img = new Image();
-          img.src = random.images?.[0] ?? random.image;
-          img.onload = () => {
-            setBgProduct(random);
-          };
+          img.src = optimizedUrl;
+          img.onload = () => setBgImageSrc(optimizedUrl);
         }
       } catch (err) {
         console.error("Hero fetch failed:", err);
@@ -39,8 +48,6 @@ const Hero = () => {
   const scrollToProducts = () => {
     document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
   };
-
-  const bgImageSrc = bgProduct?.images?.[0] ?? bgProduct?.image;
 
   return (
     <section className="relative w-full min-h-[90vh] flex items-end overflow-hidden">
@@ -54,9 +61,9 @@ const Hero = () => {
       </div>
 
       {/* Layer 2 — product image fades in on top once loaded */}
-      {bgProduct && bgImageSrc && (
+      {bgImageSrc && (
         <motion.div
-          key={bgProduct.id}
+          key={bgImageSrc}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1.2, ease: "easeInOut" }}
