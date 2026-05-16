@@ -1,33 +1,23 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState, useEffect } from "react";
-import { collection, getDocs, query, limit, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { Product } from "@/types/product";
+import { useState } from "react";
+
+const HERO_IMAGES = [
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1778002309/pcx8gw7r6x6safuhikux.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777982233/tuupf19ftk3qg6am6j7y.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777889502/k28tvloeouigagyruora.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777814694/xql0ep4eax9kyjnvyzqs.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777811207/i9s02rcsxoemwxe97all.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777806036/fw3eyhwth7lmqtcxhaiz.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777569589/bshjgxzkix0c2b6oiqf0.png",
+  "https://res.cloudinary.com/dulvmnjtd/image/upload/q_auto/f_auto/v1777569178/nsrs5fbhypzbaxdi1bbr.png",
+];
 
 const Hero = () => {
-  const [bgProduct, setBgProduct] = useState<Product | null>(null);
-
-  useEffect(() => {
-    const fetchFeatured = async () => {
-      try {
-        const snap = await getDocs(
-          query(collection(db, "products"), orderBy("name"), limit(20))
-        );
-        const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
-        // Pick a random one that has an image
-        const withImages = items.filter((p) => p.images?.[0] ?? p.image);
-        if (withImages.length > 0) {
-          const random = withImages[Math.floor(Math.random() * withImages.length)];
-          setBgProduct(random);
-        }
-      } catch (err) {
-        console.error("Hero fetch failed:", err);
-      }
-    };
-    fetchFeatured();
-  }, []);
+  const [bgUrl] = useState(
+    () => HERO_IMAGES[Math.floor(Math.random() * HERO_IMAGES.length)]
+  );
 
   const scrollToProducts = () => {
     document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
@@ -36,31 +26,22 @@ const Hero = () => {
   return (
     <section className="relative w-full min-h-[90vh] flex items-end overflow-hidden">
 
-      {/* Full-bleed background image */}
-      {bgProduct && (
-        <motion.div
-          key={bgProduct.id}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1 }}
-          className="absolute inset-0"
-        >
-          <img
-            src={bgProduct.images?.[0] ?? bgProduct.image}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover object-center"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-black/10" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
-        </motion.div>
-      )}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6 }}
+        className="absolute inset-0"
+      >
+        <img
+          src={bgUrl}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-black/10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
+      </motion.div>
 
-      {/* Fallback while loading */}
-      {!bgProduct && <div className="absolute inset-0 bg-gray-950" />}
-
-      {/* Text content */}
       <div className="relative z-10 w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-16 pt-40">
-
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
@@ -89,7 +70,7 @@ const Hero = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.5 }}
-            className="mt-10 flex flex-wrap items-center gap-4"
+            className="mt-10"
           >
             <Button
               size="lg"
@@ -101,7 +82,6 @@ const Hero = () => {
           </motion.div>
         </motion.div>
 
-        {/* Stats bar */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -121,7 +101,6 @@ const Hero = () => {
             </div>
           ))}
         </motion.div>
-
       </div>
     </section>
   );
