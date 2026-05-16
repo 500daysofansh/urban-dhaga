@@ -680,7 +680,7 @@ const ProductDetail = () => {
                 </span>
               </div>
 
-              <p className="font-heading text-3xl font-bold text-foreground">
+              <p className="font-price text-3xl font-bold text-foreground">
                 ₹
                 {product.price.toLocaleString(
                   "en-IN"
