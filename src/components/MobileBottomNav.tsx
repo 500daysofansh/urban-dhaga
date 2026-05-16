@@ -19,14 +19,13 @@ const MobileBottomNav = () => {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur-md md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-background/60 backdrop-blur-xl md:hidden">
       <div className="flex h-16 items-center justify-around">
         {tabs.map((tab) => {
           const active =
             tab.href === "/"
               ? location.pathname === "/"
               : location.pathname.startsWith(tab.href.split("#")[0]) && tab.href !== "/";
-
           return (
             <Link
               key={tab.label}
