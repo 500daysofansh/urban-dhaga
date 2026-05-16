@@ -8,6 +8,7 @@ import { Product } from "@/types/product";
 
 const Hero = () => {
   const [bgProduct, setBgProduct] = useState<Product | null>(null);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   useEffect(() => {
     const fetchFeatured = async () => {
@@ -16,11 +17,16 @@ const Hero = () => {
           query(collection(db, "products"), orderBy("name"), limit(20))
         );
         const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
-        // Pick a random one that has an image
         const withImages = items.filter((p) => p.images?.[0] ?? p.image);
         if (withImages.length > 0) {
           const random = withImages[Math.floor(Math.random() * withImages.length)];
-          setBgProduct(random);
+
+          // Preload image before setting state so fade-in is smooth
+          const img = new Image();
+          img.src = random.images?.[0] ?? random.image;
+          img.onload = () => {
+            setBgProduct(random);
+          };
         }
       } catch (err) {
         console.error("Hero fetch failed:", err);
@@ -33,21 +39,34 @@ const Hero = () => {
     document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const bgImageSrc = bgProduct?.images?.[0] ?? bgProduct?.image;
+
   return (
     <section className="relative w-full min-h-[90vh] flex items-end overflow-hidden">
 
-      {/* Full-bleed background image */}
-      {bgProduct && (
+      {/* Layer 1 — purple always visible underneath, matches old hero exactly */}
+      <div className="absolute inset-0 bg-primary">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-accent/20" />
+        <div className="absolute inset-0 texture-overlay" />
+        <div className="absolute -right-32 -top-32 h-[500px] w-[500px] rounded-full bg-accent/10 blur-3xl" />
+        <div className="absolute -left-20 bottom-0 h-[400px] w-[400px] rounded-full bg-ivory/5 blur-3xl" />
+      </div>
+
+      {/* Layer 2 — product image fades in on top once loaded */}
+      {bgProduct && bgImageSrc && (
         <motion.div
           key={bgProduct.id}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 1 }}
+          transition={{ duration: 1.2, ease: "easeInOut" }}
           className="absolute inset-0"
         >
           <img
-            src={bgProduct.images?.[0] ?? bgProduct.image}
+            src={bgImageSrc}
             alt=""
+            fetchPriority="high"
+            decoding="async"
+            onLoad={() => setImgLoaded(true)}
             className="absolute inset-0 w-full h-full object-cover object-center"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-black/10" />
@@ -55,12 +74,8 @@ const Hero = () => {
         </motion.div>
       )}
 
-      {/* Fallback while loading */}
-      {!bgProduct && <div className="absolute inset-0 bg-gray-950" />}
-
       {/* Text content */}
       <div className="relative z-10 w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-16 pt-40">
-
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
@@ -121,7 +136,6 @@ const Hero = () => {
             </div>
           ))}
         </motion.div>
-
       </div>
     </section>
   );
