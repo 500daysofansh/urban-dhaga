@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin
+Disallow: /admin/login
+Disallow: /order-confirmation
+Disallow: /my-orders
+Disallow: /cart
+Disallow: /login
+
+Sitemap: https://www.urbandhage.in/sitemap.xml
